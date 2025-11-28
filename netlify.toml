@@ -1,0 +1,16 @@
+# Location: Aexon/Aexon/netlify.toml
+# Full file — Netlify config for the frontend (build & publish)
+
+[build]
+  base = "frontend"
+  publish = "frontend/build"
+  command = "npm ci --prefix frontend && npm run build --prefix frontend"
+
+[build.environment]
+  NODE_VERSION = "18"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+  force = true

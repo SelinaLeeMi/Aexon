@@ -1,0 +1,43 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn-error.log*
+pnpm-lock.yaml
+package-lock.json
+
+# Build outputs
+dist/
+build/
+coverage/
+
+# Logs
+logs/
+*.log
+logs/*.log
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# Mac
+*.swp
+.npmrc
+
+# Misc
+*.tgz
+*.zip
+.cache/
+
+# Optional: local database files
+*.sqlite

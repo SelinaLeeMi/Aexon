@@ -1,0 +1,48 @@
+version: '3'
+services:
+  mongo:
+    image: mongo:6.0
+    ports:
+      - 27017:27017
+    restart: always
+    volumes:
+      - mongo_data:/data/db
+
+  redis:
+    image: redis:6
+    ports:
+      - 6379:6379
+    restart: always
+
+  backend:
+    build:
+      context: ./backend
+    env_file:
+      - ./backend/.env
+    ports:
+      - 8000:3000
+    volumes:
+      - ./backend/uploads:/usr/src/app/uploads
+      - ./backend/logs:/usr/src/app/logs
+    depends_on:
+      - mongo
+      - redis
+
+  frontend:
+    build:
+      context: ./frontend
+    env_file:
+      - ./frontend/.env
+    ports:
+      - 3000:80
+    depends_on:
+      - backend
+
+  mailhog:
+    image: mailhog/mailhog
+    ports:
+      - 8025:8025
+    restart: always
+
+volumes:
+  mongo_data:
