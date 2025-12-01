@@ -6,21 +6,35 @@
  */
 
 const path = require('path');
-const fs = require('fs');
 const http = require('http');
-const express = require('express');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
+
+// Load .env as early as possible
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
 const PORT = process.env.PORT || 3000;
 const MONGODB_URI = process.env.MONGODB_URI || process.env.DATABASE_URL || '';
 const CORS_ORIGINS = (process.env.CORS_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
-const REQ_LOG = String(process.env.REQ_LOG || 'false').toLowerCase() === 'true';
+
+// Helper to produce a best-effort public URL for logs
+function publicUrl() {
+  return process.env.APP_URL || process.env.FRONTEND_URL || process.env.PRIMARY_URL || `http://localhost:${PORT}`;
+}
+
+// Global error handlers (prevent process exit without logging)
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err && (err.stack || err));
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled Rejection:', reason);
+});
 
 async function main() {
+  // Connect to MongoDB (if provided)
   if (MONGODB_URI) {
     try {
+      // Mongoose v7 doesn't require these, but harmless to keep
       await mongoose.connect(MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true });
       console.log("MongoDB connected.");
     } catch (err) {
@@ -30,6 +44,7 @@ async function main() {
     console.warn("MONGODB_URI not set. Some features will not work.");
   }
 
+  // Load express app (app.js should export the Express app)
   const app = require('./app');
 
   const server = http.createServer(app);
@@ -47,7 +62,12 @@ async function main() {
     global.io = io;
     io.on('connection', (socket) => {
       console.log('Socket.IO client connected', socket.id);
+      socket.on('disconnect', (reason) => {
+        // helpful debug
+        console.log('Socket.IO disconnected', socket.id, reason);
+      });
     });
+    io.on('error', (e) => console.warn('Socket.IO error:', e && e.message));
     console.log('Socket.IO attached @ /socket.io (global.io)');
   } catch (e) {
     console.warn('Socket.IO not attached:', e && (e.message || e));
@@ -59,47 +79,62 @@ async function main() {
     const wss = new WebSocket.Server({ server, path: '/ws' });
     global.wss = wss;
     wss.on('connection', (ws) => {
-      ws.send(JSON.stringify({ type: 'connected', ts: Date.now() }));
+      try { ws.send(JSON.stringify({ type: 'connected', ts: Date.now() })); } catch {}
     });
+    wss.on('error', (e) => console.warn('ws server error:', e && e.message));
     console.log('Native WebSocket attached @ /ws (global.wss)');
   } catch (e) {
     console.warn('ws not available:', e && (e.message || e));
   }
 
-  // Redis PUB/SUB subscriber for broadcast channel
+  // Redis PUB/SUB subscriber for broadcast channel (safe non-fatal handling)
   if (process.env.REDIS_URL) {
     try {
       const IORedis = require('ioredis');
       const sub = new IORedis(process.env.REDIS_URL);
-      sub.subscribe('broadcast', (err) => {
-        if (err) console.warn('Redis subscribe error:', err && err.message);
-        else console.log('Subscribed to Redis channel: broadcast');
+
+      sub.on('error', (err) => {
+        // Important: don't crash the process — just log
+        console.warn('[ioredis] error:', err && (err.message || err));
       });
-      sub.on('message', (channel, message) => {
-        if (channel === 'broadcast') {
-          try {
-            const payload = JSON.parse(message);
-            if (global.io && typeof global.io.emit === 'function') {
-              global.io.emit('broadcast', payload);
-            } else if (global.wss && global.wss.clients) {
-              global.wss.clients.forEach(c => {
-                try { if (c.readyState === 1) c.send(JSON.stringify(payload)); } catch {}
-              });
-            }
-          } catch (e) {
-            console.warn('Invalid broadcast message from Redis:', e && e.message);
-          }
+
+      sub.subscribe('broadcast', (err, count) => {
+        if (err) {
+          console.warn('Redis subscribe error:', err && err.message);
+        } else {
+          console.log('Subscribed to Redis channel: broadcast (count=' + (count || 0) + ')');
         }
+      });
+
+      sub.on('message', (channel, message) => {
+        if (channel !== 'broadcast') return;
+        try {
+          const payload = JSON.parse(message);
+          if (global.io && typeof global.io.emit === 'function') {
+            global.io.emit('broadcast', payload);
+          } else if (global.wss && global.wss.clients) {
+            global.wss.clients.forEach(c => {
+              try { if (c.readyState === 1) c.send(JSON.stringify(payload)); } catch (_) {}
+            });
+          }
+        } catch (e) {
+          console.warn('Invalid broadcast message from Redis:', e && e.message);
+        }
+      });
+
+      // close subscriber gracefully on shutdown
+      process.on('SIGTERM', async () => {
+        try { await sub.quit(); } catch (e) {}
       });
     } catch (e) {
       console.warn('Redis setup error:', e && (e.message || e));
     }
   }
 
-  // Main listen
+  // Start server
   server.listen(PORT, () => {
     console.log(`Server listening on port ${PORT}`);
-    console.log(`API Health: https://aexon-frontend.onrender.com`);
+    console.log(`API Health: ${publicUrl()}/api/health`);
   });
 
   // Graceful shutdown
@@ -124,6 +159,7 @@ async function main() {
       process.exit(1);
     }
   };
+
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 }

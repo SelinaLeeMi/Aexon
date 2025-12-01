@@ -1,71 +1,46 @@
 /**
- * Email Utility - Premium Professional Refactor (with extra debugging)
- * Handles confirmation and password reset emails using SMTP.
+ * Email Utility (Resend Version)
+ * Clean, simple, no SMTP, no timeouts.
  */
 
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 
-const port = parseInt(process.env.SMTP_PORT, 10);
+const resend = new Resend(process.env.RESEND_API_KEY);
 
-console.log("Nodemailer config:", {
-  host: process.env.SMTP_HOST,
-  port: port,
-  user: process.env.SMTP_USER,
-  pass: process.env.SMTP_PASS ? "********" : "MISSING",
-  secure: port === 465,
-});
+const FROM = process.env.EMAIL_FROM; // onboarding@resend.dev
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port,
-  secure: port === 465, // true for 465 (SSL), false for 587 (TLS)
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS
-  },
-  logger: true, // adds logging
-  debug: true   // enables debug output
-});
-
-/**
- * Send confirmation code for registration/verification.
- */
+// Send confirmation code
 exports.sendConfirmationCode = async (to, code) => {
-  const mailOptions = {
-    from: `"Aexon Support" <${process.env.SUPPORT_EMAIL}>`,
-    to,
-    subject: "Aexon - Your Confirmation Code",
-    text: `Your confirmation code is: ${code}`,
-    html: `<h2>Your confirmation code is:</h2><p><b>${code}</b></p>`
-  };
   try {
-    const info = await transporter.sendMail(mailOptions);
-    console.log(`Message sent: ${info.messageId} to ${to}`);
-    return info;
+    const result = await resend.emails.send({
+      from: FROM,
+      to,
+      subject: "Aexon - Your Confirmation Code",
+      html: `<h2>Your confirmation code:</h2><p><b>${code}</b></p>`
+    });
+
+    console.log("Confirmation email sent:", result);
+    return result;
   } catch (err) {
-    // Print full error for diagnosis
-    console.error("Failed to send confirmation code:", err);
-    throw new Error("Failed to send confirmation email: " + err.message);
+    console.error("Failed to send confirmation email:", err);
+    throw new Error("Failed to send confirmation email");
   }
 };
 
-/**
- * Send password reset code for password recovery.
- */
+// Send password reset code
 exports.sendPasswordResetCode = async (to, code) => {
-  const mailOptions = {
-    from: `"Aexon Support" <${process.env.SUPPORT_EMAIL}>`,
-    to,
-    subject: "Aexon - Password Reset Code",
-    text: `Your password reset code is: ${code}`,
-    html: `<h2>Your password reset code is:</h2><p><b>${code}</b></p>`
-  };
   try {
-    const info = await transporter.sendMail(mailOptions);
-    console.log(`Password reset code sent: ${info.messageId} to ${to}`);
-    return info;
+    const result = await resend.emails.send({
+      from: FROM,
+      to,
+      subject: "Aexon - Password Reset Code",
+      html: `<h2>Your password reset code:</h2><p><b>${code}</b></p>`
+    });
+
+    console.log("Password reset email sent:", result);
+    return result;
   } catch (err) {
-    console.error("Failed to send password reset code:", err);
-    throw new Error("Failed to send password reset email: " + err.message);
+    console.error("Failed to send reset email:", err);
+    throw new Error("Failed to send password reset email");
   }
 };

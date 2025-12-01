@@ -14,7 +14,6 @@ const cors = require('cors');
 const morgan = require('morgan');
 const path = require('path');
 const jwt = require('jsonwebtoken');
-const mongoose = require('mongoose');
 
 const apiRouter = require('./routes/index');
 
@@ -27,13 +26,20 @@ app.use(express.urlencoded({ extended: true, limit: '3mb' }));
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
 // CORS Setup
+// You can set CORS_ORIGINS="https://aexon-frontend.onrender.com,https://other" OR set REACT_APP_FRONTEND_URL for single value.
 const corsOriginsEnv = process.env.CORS_ORIGINS || process.env.REACT_APP_FRONTEND_URL || '';
 const allowedOrigins = corsOriginsEnv ? corsOriginsEnv.split(',').map(s => s.trim()).filter(Boolean) : [];
+
 const corsOptions = {
   origin: function (origin, callback) {
+    // allow non-browser (curl, Postman) requests
     if (!origin) return callback(null, true);
-    if (allowedOrigins.length === 0) return callback(null, true);
+    if (allowedOrigins.length === 0) return callback(null, true); // open if nothing configured
+    // allow exact match
     if (allowedOrigins.includes(origin)) return callback(null, true);
+    // allow origin without trailing slash variations
+    const trimmed = origin.replace(/\/$/, '');
+    if (allowedOrigins.includes(trimmed)) return callback(null, true);
     callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
@@ -50,9 +56,11 @@ app.use(async (req, res, next) => {
   const token = auth.split(' ')[1];
   try {
     const payload = jwt.verify(token, JWT_SECRET);
-    const userId = payload.id || payload._id || payload.sub;
+    const userId = payload.id || payload._id || payload.userId || payload.sub;
     req.user = userId && UserModel ? (await UserModel.findById(userId).lean()) : payload;
-  } catch { req.user = null; }
+  } catch (e) {
+    req.user = null;
+  }
   next();
 });
 
@@ -86,6 +94,7 @@ app.use((req, res, next) => {
 // Error boundary
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err && (err.stack || err));
+  if (res.headersSent) return next(err);
   res.status(500).json({ error: err && (err.message || 'Internal Server Error') });
 });
 
