@@ -99,7 +99,7 @@ async function main() {
   // Main listen
   server.listen(PORT, () => {
     console.log(`Server listening on port ${PORT}`);
-    console.log(`API Health: http://localhost:${PORT}/api/health`);
+    console.log(`API Health: https://aexon-frontend.onrender.com`);
   });
 
   // Graceful shutdown
