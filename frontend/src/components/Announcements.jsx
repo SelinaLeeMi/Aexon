@@ -10,7 +10,7 @@ export default function Announcements() {
   useEffect(() => {
     getAnnouncements()
       .then(data => {
-        setAnns(data.data || []);
+        setAnns(Array.isArray(data.announcements) ? data.announcements : []);
         setError("");
       })
       .catch(e => setError(typeof e === "string" ? e : e?.message || "Failed to load announcements"))

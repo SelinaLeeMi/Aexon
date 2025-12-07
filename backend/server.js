@@ -3,6 +3,7 @@
  * - Loads main app from app.js
  * - Handles WS, Socket.IO, Redis broadcast, static files
  * - Robust error/logging/shutdown handlers
+ * - Starts price engine if available
  */
 
 const path = require('path');
@@ -34,7 +35,7 @@ async function main() {
   // Connect to MongoDB (if provided)
   if (MONGODB_URI) {
     try {
-      // Mongoose v7 doesn't require these, but harmless to keep
+      // Mongoose v7 doesn't require these options but harmless to keep
       await mongoose.connect(MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true });
       console.log("MongoDB connected.");
     } catch (err) {
@@ -63,7 +64,6 @@ async function main() {
     io.on('connection', (socket) => {
       console.log('Socket.IO client connected', socket.id);
       socket.on('disconnect', (reason) => {
-        // helpful debug
         console.log('Socket.IO disconnected', socket.id, reason);
       });
     });
@@ -136,6 +136,18 @@ async function main() {
     console.log(`Server listening on port ${PORT}`);
     console.log(`API Health: ${publicUrl()}/api/health`);
   });
+
+  // Start price engine if available (non-blocking)
+  try {
+    // price engine should export a start function; this file is optional
+    const startPriceEngine = require('./jobs/priceUpdater');
+    if (typeof startPriceEngine === 'function') {
+      startPriceEngine();
+      console.log('Price engine started (from jobs/priceUpdater).');
+    }
+  } catch (e) {
+    console.log('Price engine not found or failed to start (jobs/priceUpdater).', e && (e.message || e));
+  }
 
   // Graceful shutdown
   const shutdown = async () => {
