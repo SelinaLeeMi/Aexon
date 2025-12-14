@@ -3,7 +3,8 @@
 // - Exports default axios instance (api)
 // - Exports helper functions used throughout the frontend.
 // - Ensures Authorization header is attached from localStorage/sessionStorage
-// - IMPORTANT: baseURL does NOT include "/api"; helper functions prefix "/api" on request paths
+// - Ensures relative API calls are routed under /api/* by prefixing when needed.
+
 import axios from "axios";
 
 const RAW_API_BASE = (process.env.REACT_APP_API_BASE || "https://aexon-qedx.onrender.com").replace(/\/+$/, "");
@@ -36,12 +37,31 @@ function readAuthToken() {
   return null;
 }
 
-// attach token automatically to API requests
+// Request interceptor: attach token AND ensure relative API paths are prefixed with /api
 api.interceptors.request.use((config) => {
   try {
+    // Attach auth token if present
     const token = readAuthToken();
-    if (token) config.headers = { ...(config.headers || {}), Authorization: `Bearer ${token}` };
-  } catch (e) {}
+    if (token) {
+      config.headers = { ...(config.headers || {}), Authorization: `Bearer ${token}` };
+    }
+
+    // Normalize URL: if caller passed a relative path like "/me" or "/admin/summary"
+    // ensure it targets the backend /api prefix: "/api/me", "/api/admin/summary".
+    // Do NOT modify absolute URLs (http://...) or URLs already starting with /api/.
+    if (config && typeof config.url === "string") {
+      const url = config.url;
+      // If it is an absolute URL (http/https), leave it alone
+      if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(url)) {
+        // If it starts with "/" but not "/api/", prefix "/api"
+        if (url.startsWith("/") && !url.startsWith("/api/")) {
+          config.url = `/api${url}`;
+        }
+      }
+    }
+  } catch (e) {
+    // swallow errors to avoid blocking requests
+  }
   return config;
 });
 
@@ -69,10 +89,8 @@ api.interceptors.response.use(
 );
 
 // --- Helper endpoints used across the frontend ---
-// Note: these return axios promises; existing .then/.catch code continues to work
-
-// All helper functions target the backend under the "/api" prefix explicitly.
-// This keeps SPA routes and static assets at the host root unaffected.
+// All helper functions target the backend under the "/api" prefix explicitly where beneficial,
+// but the request interceptor also ensures calls like api.get("/me") are normalized to "/api/me".
 
 // Public / API calls
 export function getCoins() {
@@ -104,11 +122,9 @@ export function resetPassword(token, password) {
 }
 
 // submit KYC (FormData or JSON)
-// Use the raw axios instance for FormData so browser sets the multipart Content-Type.
-// For JSON we use the shared api instance which already sets headers and Authorization.
+// Use raw axios for FormData to allow browser to set multipart boundaries.
 export function submitKyc(formData) {
   if (formData instanceof FormData) {
-    // Use full absolute URL to avoid the api instance's JSON header interfering with multipart
     const url = `${RAW_API_BASE}/api/kyc`;
     return axios.post(url, formData, {
       headers: { Authorization: `Bearer ${readAuthToken() || ""}` },
@@ -152,7 +168,6 @@ export async function adminUnbanUser(userId) {
 export async function adminSetDepositAddress({ userId, coin, address }) {
   if (!userId) throw new Error("userId required");
 
-  // If address is an object, treat as multiple coin->address mapping
   if (address && typeof address === "object" && !coin) {
     const entries = Object.entries(address).filter(([k, v]) => !!k && !!v);
     if (entries.length === 0) return Promise.resolve({ success: true });
@@ -168,7 +183,6 @@ export async function adminSetDepositAddress({ userId, coin, address }) {
     return results;
   }
 
-  // Single mapping
   if (!coin || !address) throw new Error("coin and address required for single update");
   return api.post(`/api/admin/user/${userId}/deposit-address`, { coin: String(coin).toUpperCase(), address: String(address) });
 }
