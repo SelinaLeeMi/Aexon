@@ -4,21 +4,17 @@
 // Purpose:
 // - Ensure ALL API requests target the backend origin using a FULL absolute base URL.
 // - Keep Authorization: Bearer <token> attached automatically.
-// - Minimal, safe changes only to this file to satisfy static-site constraints (no proxy/rewrite).
+// - Minimal, safe changes only to this file to align frontend endpoint paths with backend routes.
 //
-// Behavior:
-// - Reads backend origin from REACT_APP_BACKEND_BASE (preferred) or REACT_APP_API_BASE fallback.
-// - Constructs an absolute baseURL that includes the "/api" prefix (e.g. https://backend.onrender.com/api).
-// - Uses axios instance with that baseURL so calls like api.get("/admin/summary") resolve to
-//   https://backend.onrender.com/api/admin/summary.
-// - submitKyc(FormData) uses raw axios.post to the full absolute URL so multipart boundaries are handled by the browser.
+// Note: This file intentionally uses absolute backend origin (BACKEND_HOST + "/api") as baseURL.
+// Do NOT modify routing or components; this file maps frontend helpers to backend endpoints.
 
 import axios from "axios";
 
 // Backend host/origin (absolute) - prefer explicit env var REACT_APP_BACKEND_BASE
 const BACKEND_HOST = (process.env.REACT_APP_BACKEND_BASE || process.env.REACT_APP_API_BASE || "https://aexon-qedx.onrender.com").replace(/\/+$/, "");
 
-// Full API base (absolute) — includes /api path. This ensures the static frontend calls the backend origin directly.
+// Full API base (absolute) — includes /api path.
 const API_BASE_URL = `${BACKEND_HOST}/api`;
 
 const api = axios.create({
@@ -37,15 +33,11 @@ export function setForceLogoutHandler(fn) {
 // Helper: get token from canonical storage locations
 function readAuthToken() {
   try {
-    // Primary: localStorage
     const t = localStorage.getItem("token");
     if (t) return t;
-    // Fallback: sessionStorage
     const s = sessionStorage.getItem("token");
     if (s) return s;
-  } catch (e) {
-    // ignore storage errors (e.g., privacy mode)
-  }
+  } catch (e) {}
   return null;
 }
 
@@ -56,10 +48,8 @@ api.interceptors.request.use((config) => {
     if (token) {
       config.headers = { ...(config.headers || {}), Authorization: `Bearer ${token}` };
     }
-    // Note: config.url will be appended to API_BASE_URL by axios; callers should use relative paths like "/admin/summary" or "/coin".
-  } catch (e) {
-    // swallow errors so requests still go out
-  }
+    // callers use relative paths like "/me" or "/admin/summary"; axios will resolve against API_BASE_URL
+  } catch (e) {}
   return config;
 });
 
@@ -75,7 +65,6 @@ api.interceptors.response.use(
       (typeof msg === "string" && (msg.toLowerCase().includes("jwt") || msg.toLowerCase().includes("not authorized") || msg.toLowerCase().includes("banned")))
     ) {
       try {
-        // Remove only auth-related keys to avoid wiping unrelated app state
         localStorage.removeItem("token");
         localStorage.removeItem("user");
         sessionStorage.removeItem("token");
@@ -89,26 +78,35 @@ api.interceptors.response.use(
 // --------------------
 // Public / API helpers
 // --------------------
-// Note: Because baseURL includes the absolute backend origin + "/api", callers throughout the app
-// can call api.get("/me") or api.get("/admin/summary") and requests will hit the correct backend URL.
+// Corrected endpoint paths here to exactly match backend routes:
+// - GET /api/me
+// - GET /api/wallet
+// - GET /api/coin
+// - POST /api/auth/login
+// - POST /api/auth/register
 
 export function getCoins() {
+  // Backend: GET /api/coin
   return api.get("/coin");
 }
 
 export function getMe() {
-  return api.get("/user/me");
+  // Backend: GET /api/me
+  return api.get("/me");
 }
 
 export function getWallet() {
+  // Backend: GET /api/wallet
   return api.get("/wallet");
 }
 
 export function getAnnouncements() {
+  // Backend: GET /api/announcements
   return api.get("/announcements");
 }
 
 export function getCryptoNews() {
+  // Backend: GET /api/news
   return api.get("/news");
 }
 
@@ -122,7 +120,6 @@ export function resetPassword(token, password) {
 
 // submit KYC (FormData or JSON)
 // Use raw axios for FormData so the browser sets multipart boundaries correctly.
-// Build absolute URL using BACKEND_HOST to avoid any baseURL confusion.
 export function submitKyc(formData) {
   if (formData instanceof FormData) {
     const url = `${BACKEND_HOST}/api/kyc`;
@@ -150,22 +147,18 @@ export function register(payload) {
 // Admin helper functions (minimal, safe)
 // --------------------
 
-// Ban a user
 export async function adminBanUser(userId) {
   if (!userId) throw new Error("userId required");
   return api.post(`/admin/user/${userId}/action`, { action: "ban" });
 }
 
-// Unban a user
 export async function adminUnbanUser(userId) {
   if (!userId) throw new Error("userId required");
   return api.post(`/admin/user/${userId}/action`, { action: "unban" });
 }
 
 // Set deposit address(es) for a user.
-// Supports:
-//  - Single: adminSetDepositAddress({ userId, coin: "USDT", address: "addr123" })
-//  - Multiple: adminSetDepositAddress({ userId, address: { USDT: "addr1", BTC: "addr2" } })
+// Supports single and multiple mappings.
 export async function adminSetDepositAddress({ userId, coin, address }) {
   if (!userId) throw new Error("userId required");
 
