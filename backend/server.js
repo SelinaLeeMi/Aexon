@@ -3,7 +3,11 @@
  * - Loads main app from app.js
  * - Handles WS, Socket.IO, Redis broadcast, static files
  * - Robust error/logging/shutdown handlers
- * - Starts price engine if available
+ * - Starts DB-dependent services only when MongoDB is connected
+ *
+ * Behavior:
+ * - production (NODE_ENV=production): MongoDB connection is required (fail-fast).
+ * - non-production: server boots even if DB connection fails; DB-dependent features remain disabled until DB connects.
  */
 
 const path = require('path');
@@ -31,22 +35,113 @@ process.on('unhandledRejection', (reason) => {
   console.error('Unhandled Rejection:', reason);
 });
 
+// Global DB-connected flag (used by app.js middleware)
+global.__DB_CONNECTED__ = false;
+
+// Handles for DB-dependent services to allow stopping them on disconnect
+let dbServiceHandles = {
+  priceEngineStop: null,
+  simulatorStop: null,
+  randomizerStop: null
+};
+
+function startDbServices() {
+  // start price engine
+  if (!dbServiceHandles.priceEngineStop) {
+    try {
+      const startPriceEngine = require('./jobs/priceUpdater');
+      if (typeof startPriceEngine === 'function') {
+        dbServiceHandles.priceEngineStop = startPriceEngine();
+        console.log('Price engine started (jobs/priceUpdater).');
+      }
+    } catch (e) {
+      console.warn('Price engine not started:', e && (e.message || e));
+    }
+  }
+
+  // start custom coin simulator if present
+  if (!dbServiceHandles.simulatorStop) {
+    try {
+      const simulator = require('./utils/coinPriceSimulator');
+      if (simulator && typeof simulator.startSimulator === 'function') {
+        dbServiceHandles.simulatorStop = simulator.startSimulator();
+        console.log('Coin simulator started (utils/coinPriceSimulator).');
+      }
+    } catch (e) {
+      console.warn('Coin simulator not started:', e && (e.message || e));
+    }
+  }
+
+  // start price randomizer if present
+  if (!dbServiceHandles.randomizerStop) {
+    try {
+      const randomizer = require('./utils/priceRandomizer');
+      if (randomizer && typeof randomizer.startPriceRandomizer === 'function') {
+        dbServiceHandles.randomizerStop = randomizer.startPriceRandomizer();
+        console.log('Price randomizer started (utils/priceRandomizer).');
+      }
+    } catch (e) {
+      console.warn('Price randomizer not started:', e && (e.message || e));
+    }
+  }
+}
+
+function stopDbServices() {
+  try {
+    if (dbServiceHandles.priceEngineStop && typeof dbServiceHandles.priceEngineStop === 'function') {
+      dbServiceHandles.priceEngineStop();
+      dbServiceHandles.priceEngineStop = null;
+      console.log('Price engine stopped.');
+    }
+  } catch (e) { console.warn('Failed stopping price engine:', e && e.message); }
+  try {
+    if (dbServiceHandles.simulatorStop && typeof dbServiceHandles.simulatorStop === 'function') {
+      dbServiceHandles.simulatorStop();
+      dbServiceHandles.simulatorStop = null;
+      console.log('Coin simulator stopped.');
+    }
+  } catch (e) { console.warn('Failed stopping simulator:', e && e.message); }
+  try {
+    if (dbServiceHandles.randomizerStop && typeof dbServiceHandles.randomizerStop === 'function') {
+      dbServiceHandles.randomizerStop();
+      dbServiceHandles.randomizerStop = null;
+      console.log('Price randomizer stopped.');
+    }
+  } catch (e) { console.warn('Failed stopping randomizer:', e && e.message); }
+}
+
 async function main() {
-  // Connect to MongoDB (if provided)
+  // Attempt to connect to MongoDB (if provided).
   if (MONGODB_URI) {
     try {
-      // Mongoose v7 doesn't require these options but harmless to keep
+      // Mongoose v7 doesn't require these options but harmless to include for compatibility
       await mongoose.connect(MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true });
-      console.log("MongoDB connected.");
+      global.__DB_CONNECTED__ = true;
+      console.log('MongoDB connected.');
     } catch (err) {
-      console.error("MongoDB connection error:", err && (err.message || err));
+      console.error('MongoDB connection error:', err && (err.message || err));
+      // Production must fail fast
+      if (process.env.NODE_ENV === 'production') {
+        console.error('Production requires MongoDB. Exiting.');
+        process.exit(1);
+      } else {
+        console.warn('Continuing without MongoDB (non-production). DB-dependent features disabled until DB connects.');
+      }
     }
   } else {
-    console.warn("MONGODB_URI not set. Some features will not work.");
+    console.warn('MONGODB_URI not set. Some features will not work.');
+    // In production, absence should be treated as fatal
+    if (process.env.NODE_ENV === 'production') {
+      console.error('Production requires MONGODB_URI. Exiting.');
+      process.exit(1);
+    }
   }
 
   // Load express app (app.js should export the Express app)
   const app = require('./app');
+
+  // Sync initial DB-connected flag to app.locals so middleware can read it
+  app.locals.dbConnected = !!global.__DB_CONNECTED__;
 
   const server = http.createServer(app);
 
@@ -137,22 +232,42 @@ async function main() {
     console.log(`API Health: ${publicUrl()}/api/health`);
   });
 
-  // Start price engine if available (non-blocking)
-  try {
-    // price engine should export a start function; this file is optional
-    const startPriceEngine = require('./jobs/priceUpdater');
-    if (typeof startPriceEngine === 'function') {
-      startPriceEngine();
-      console.log('Price engine started (from jobs/priceUpdater).');
+  // If DB is connected at startup, start DB-dependent services now
+  if (global.__DB_CONNECTED__) {
+    try {
+      startDbServices();
+    } catch (e) {
+      console.warn('Failed starting DB-dependent services:', e && (e.message || e));
     }
+  }
+
+  // React to mongoose connection lifecycle to start/stop services and update app.locals
+  try {
+    mongoose.connection.on('connected', () => {
+      console.log('Mongoose event: connected');
+      global.__DB_CONNECTED__ = true;
+      try { app.locals.dbConnected = true; } catch (e) {}
+      try { startDbServices(); } catch (e) { console.warn('Error starting DB services on connected:', e && e.message); }
+    });
+    mongoose.connection.on('disconnected', () => {
+      console.warn('Mongoose event: disconnected');
+      global.__DB_CONNECTED__ = false;
+      try { app.locals.dbConnected = false; } catch (e) {}
+      try { stopDbServices(); } catch (e) { console.warn('Error stopping DB services on disconnected:', e && e.message); }
+    });
+    mongoose.connection.on('error', (err) => {
+      console.warn('Mongoose event: error', err && (err.message || err));
+      // do not exit here; production connect attempt handled earlier (fail-fast)
+    });
   } catch (e) {
-    console.log('Price engine not found or failed to start (jobs/priceUpdater).', e && (e.message || e));
+    console.warn('Failed to attach mongoose lifecycle handlers:', e && e.message);
   }
 
   // Graceful shutdown
   const shutdown = async () => {
     console.log('Shutting down...');
     try {
+      stopDbServices();
       if (global.io && typeof global.io.close === 'function') global.io.close();
       if (global.wss && typeof global.wss.close === 'function') global.wss.close();
       server.close(() => {

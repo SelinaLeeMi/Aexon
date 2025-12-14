@@ -6,6 +6,8 @@
  * - Serves uploads/kyc and assets with suitable HTTP headers
  * - Exposes global app object to server.js
  * - Handles 404 and error globally
+ *
+ * Note: app.locals.dbConnected is consulted by startup code (server.js).
  */
 
 const express = require('express');
@@ -18,6 +20,9 @@ const jwt = require('jsonwebtoken');
 const apiRouter = require('./routes/index');
 
 const app = express();
+
+// default DB status until server sets it
+app.locals.dbConnected = false;
 
 // Security and logging middleware
 app.use(helmet());
@@ -49,7 +54,8 @@ app.use(cors(corsOptions));
 // Attach user if Bearer token present (for upload protection, etc.)
 const JWT_SECRET = process.env.JWT_SECRET || process.env.SECRET || 'change_this_secret';
 let UserModel = null;
-try { UserModel = require('./models/User'); } catch (e) {}
+try { UserModel = require('./models/User'); } catch (e) { /* optional model */ }
+
 app.use(async (req, res, next) => {
   const auth = req.headers.authorization || req.headers.Authorization || '';
   if (!auth.startsWith('Bearer ')) { req.user = null; return next(); }
@@ -57,7 +63,17 @@ app.use(async (req, res, next) => {
   try {
     const payload = jwt.verify(token, JWT_SECRET);
     const userId = payload.id || payload._id || payload.userId || payload.sub;
-    req.user = userId && UserModel ? (await UserModel.findById(userId).lean()) : payload;
+    // If DB is not connected, avoid attempting DB lookups
+    if (!app.locals.dbConnected || !UserModel || !userId) {
+      req.user = payload;
+      return next();
+    }
+    try {
+      req.user = userId ? (await UserModel.findById(userId).lean()) : payload;
+    } catch (e) {
+      // If a DB error occurs, fallback to token payload and continue
+      req.user = payload;
+    }
   } catch (e) {
     req.user = null;
   }
@@ -80,11 +96,42 @@ app.use('/uploads/kyc', express.static(uploadsKycPath, {
   }
 }));
 
+// DB-availability middleware for API routes.
+// If DB is not connected, we short-circuit most /api routes with 503, but allow:
+//  - GET /api/health
+//  - GET /api (API root) -- helpful for basic discovery
+app.use((req, res, next) => {
+  try {
+    const isApiPath = req.path && req.path.startsWith('/api');
+    if (!isApiPath) return next();
+
+    const allowedWhenDbDown = ['/api', '/api/health'];
+    const fullPath = req.path;
+
+    if (app.locals.dbConnected) return next();
+    if (allowedWhenDbDown.includes(fullPath)) return next();
+
+    // Return clear 503 for DB-backed endpoints
+    return res.status(503).json({
+      success: false,
+      error: 'Service unavailable: database offline. In local development you may set LOCAL_SKIP_DB=true or start MongoDB. In production the database is required.'
+    });
+  } catch (e) {
+    // In case of unexpected errors in middleware, allow request through to avoid accidental outage.
+    return next();
+  }
+});
+
 // Load all main API routes
 app.use('/api', apiRouter);
 
-// Global health endpoint (compat)
-app.get('/api/health', (req, res) => res.json({ ok: true, uptime: process.uptime(), env: process.env.NODE_ENV || 'development' }));
+// Global health endpoint (compat) - kept here for completeness; routes/index also exposes /health
+app.get('/api/health', (req, res) => res.json({
+  ok: true,
+  uptime: process.uptime(),
+  env: process.env.NODE_ENV || 'development',
+  dbConnected: !!app.locals.dbConnected
+}));
 
 // 404
 app.use((req, res, next) => {
