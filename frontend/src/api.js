@@ -1,11 +1,16 @@
+// frontend/src/api.js
 // Central API client and helper functions
 // - Exports default axios instance (api)
-// - Exports helper functions used throughout the frontend: getCoins, getMe, getWallet, getAnnouncements, getCryptoNews, forgotPassword, submitKyc, login, register, etc.
-// - Keeps the existing setForceLogoutHandler behavior.
+// - Exports helper functions used throughout the frontend.
+// - Adds small admin helpers (adminBanUser, adminUnbanUser, adminSetDepositAddress)
+// - Ensures Authorization header is attached from localStorage/sessionStorage
 
 import axios from "axios";
 
-const API_BASE = process.env.REACT_APP_API_BASE || "https://aexon-qedx.onrender.com";
+const RAW_API_BASE = process.env.REACT_APP_API_BASE || "https://aexon-qedx.onrender.com";
+// Ensure default base includes /api so calls like api.get('/admin/summary') hit /api/admin/summary
+const API_BASE = RAW_API_BASE.replace(/\/+$/, "") + "/api";
+
 const api = axios.create({
   baseURL: API_BASE,
   headers: {
@@ -19,11 +24,26 @@ export function setForceLogoutHandler(fn) {
   onForceLogout = fn;
 }
 
+// Helper: get token from canonical storage locations
+function readAuthToken() {
+  try {
+    // Primary: localStorage
+    const t = localStorage.getItem("token");
+    if (t) return t;
+    // Fallback: sessionStorage
+    const s = sessionStorage.getItem("token");
+    if (s) return s;
+  } catch (e) {
+    // ignore storage errors (e.g., privacy mode)
+  }
+  return null;
+}
+
 // attach token automatically
 api.interceptors.request.use((config) => {
   try {
-    const token = localStorage.getItem("token");
-    if (token) config.headers.Authorization = `Bearer ${token}`;
+    const token = readAuthToken();
+    if (token) config.headers = { ...(config.headers || {}), Authorization: `Bearer ${token}` };
   } catch (e) {}
   return config;
 });
@@ -41,6 +61,7 @@ api.interceptors.response.use(
     ) {
       try {
         localStorage.clear();
+        sessionStorage.clear();
         if (typeof onForceLogout === "function") onForceLogout(msg);
       } catch (e) {}
       // optional redirect for SPA; swallowing here so callers can handle too
@@ -92,7 +113,7 @@ export function submitKyc(formData) {
   if (formData instanceof FormData) {
     // For FormData we need a separate request (no JSON header)
     return axios.post(`${API_BASE.replace(/\/api\/?$/, "")}/api/kyc`, formData, {
-      headers: { Authorization: `Bearer ${localStorage.getItem("token") || ""}` },
+      headers: { Authorization: `Bearer ${readAuthToken() || ""}` },
     });
   }
   return api.post("/kyc", formData);
@@ -111,4 +132,50 @@ export function register(payload) {
   return api.post("/auth/register", payload);
 }
 
+// --- Admin helper functions (minimal, safe) ---
+// These wrap existing /admin endpoints and rely on the axios instance so Authorization header is automatic.
+
+// Ban a user
+export async function adminBanUser(userId) {
+  if (!userId) throw new Error("userId required");
+  return api.post(`/admin/user/${userId}/action`, { action: "ban" });
+}
+
+// Unban a user
+export async function adminUnbanUser(userId) {
+  if (!userId) throw new Error("userId required");
+  return api.post(`/admin/user/${userId}/action`, { action: "unban" });
+}
+
+// Set deposit address(es) for a user.
+// Supports two forms:
+//  - Single: adminSetDepositAddress({ userId, coin: "USDT", address: "addr123" })
+//  - Multiple: adminSetDepositAddress({ userId, address: { USDT: "addr1", BTC: "addr2" } })
+// When multiple addresses are provided, this issues one request per coin (auditable, minimal).
+export async function adminSetDepositAddress({ userId, coin, address }) {
+  if (!userId) throw new Error("userId required");
+
+  // If address is an object, treat as multiple coin->address mapping
+  if (address && typeof address === "object" && !coin) {
+    const entries = Object.entries(address).filter(([k, v]) => !!k && !!v);
+    if (entries.length === 0) return Promise.resolve({ success: true });
+    // perform requests serially to avoid overwhelming backend and to keep audit sequence
+    const results = [];
+    for (const [c, addr] of entries) {
+      try {
+        const r = await api.post(`/admin/user/${userId}/deposit-address`, { coin: c, address: String(addr) });
+        results.push({ coin: c, ok: true, resp: r.data });
+      } catch (e) {
+        results.push({ coin: c, ok: false, error: e?.response?.data || e?.message || String(e) });
+      }
+    }
+    return results;
+  }
+
+  // Single mapping
+  if (!coin || !address) throw new Error("coin and address required for single update");
+  return api.post(`/admin/user/${userId}/deposit-address`, { coin: String(coin).toUpperCase(), address: String(address) });
+}
+
+// Export default axios instance
 export default api;
