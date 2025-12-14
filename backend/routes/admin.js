@@ -5,6 +5,12 @@
  *
  * This file preserves your original admin endpoints and adds
  * coin-management endpoints handled inline (no changes to adminController).
+ *
+ * Minimal additions:
+ *  - GET /user/:id/balances  (ledger-backed, read-only)
+ *  - POST /user/:id/deposit-address  (internal-only admin write, audited)
+ *
+ * All routes protected by adminAuth via router.use(adminAuth).
  */
 
 const express = require('express');
@@ -13,6 +19,8 @@ const adminController = require('../controllers/adminController');
 const adminAuth = require('../middlewares/adminAuth');
 
 const Coin = require('../models/Coin');
+const User = require('../models/User');
+const { createAudit } = require('../utils/auditLog');
 
 // Protect all admin routes
 router.use(adminAuth);
@@ -47,7 +55,60 @@ router.get('/settings', adminController.getSettings.bind(adminController));
 router.post('/settings', adminController.postSettings.bind(adminController));
 
 // --------------------------
-// NEW: Coin management endpoints (inline handlers)
+// NEW: Ledger-backed user balances (read-only)
+// --------------------------
+// Support both /user/:id/balances and /users/:id/balances for convenience
+router.get('/user/:id/balances', adminController.getUserBalances.bind(adminController));
+router.get('/users/:id/balances', adminController.getUserBalances.bind(adminController));
+
+// --------------------------
+// NEW: Admin-only deposit address setter (internal mapping only)
+// --------------------------
+// POST /api/admin/user/:id/deposit-address
+// Body: { coin: "USDT", address: "internal-address-123" }
+router.post('/user/:id/deposit-address', async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const coin = (req.body.coin || '').toUpperCase();
+    const address = (req.body.address || '').trim();
+
+    if (!userId || !coin || !address) {
+      return res.status(400).json({ success: false, error: "Missing userId, coin or address" });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ success: false, error: "User not found" });
+
+    // Update (or create) wallet entry for this coin with the provided address.
+    user.wallets = user.wallets || [];
+    let wallet = user.wallets.find(w => w.coin === coin);
+    if (!wallet) {
+      wallet = { coin, balance: 0, address };
+      user.wallets.push(wallet);
+    } else {
+      wallet.address = address;
+    }
+
+    await user.save();
+
+    // Audit the admin action (do not log 'demo' or simulation wording)
+    try {
+      await createAudit("admin:set_deposit_address", req.user && req.user._id, {
+        targetUser: userId, coin, address, performedAt: new Date()
+      });
+    } catch (e) {
+      console.warn("audit create failed for deposit-address:", e && e.message);
+    }
+
+    return res.json({ success: true, msg: "Deposit address updated" });
+  } catch (err) {
+    console.error('Admin POST /user/:id/deposit-address error', err && (err.stack || err.message || err));
+    return res.status(500).json({ success: false, error: 'Failed to set deposit address' });
+  }
+});
+
+// --------------------------
+// Existing coin management endpoints (unchanged)
 // --------------------------
 
 // List coins (with optional ?limit & ?skip)

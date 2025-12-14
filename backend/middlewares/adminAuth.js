@@ -5,6 +5,9 @@
  * - Verifies JWT_SECRET and checks user role === 'admin' and not banned (isBanned).
  *
  * Expects token payload to contain user id in "id", "_id" or "sub".
+ *
+ * NOTE: This file was adjusted to attach both req.user._id and req.user.id
+ * (string) to ensure downstream controllers that reference either property continue to work.
  */
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
@@ -30,6 +33,7 @@ module.exports = async function adminAuth(req, res, next) {
       return res.status(401).json({ error: "Invalid token payload" });
     }
 
+    // Load minimal user data; use lean() to get plain object
     const user = await User.findById(userId).select('+role +isBanned +email +username').lean();
     if (!user) return res.status(401).json({ error: "User not found" });
 
@@ -41,8 +45,15 @@ module.exports = async function adminAuth(req, res, next) {
       return res.status(403).json({ error: "User is banned" });
     }
 
-    // attach concise user info to req
-    req.user = { _id: user._id, email: user.email, username: user.username, role: user.role };
+    // attach concise user info to req and keep both id and _id properties for compatibility
+    req.user = {
+      _id: user._id,
+      id: String(user._id),
+      email: user.email,
+      username: user.username,
+      role: user.role
+    };
+
     next();
   } catch (err) {
     console.error("adminAuth error:", err && (err.stack || err.message || err));

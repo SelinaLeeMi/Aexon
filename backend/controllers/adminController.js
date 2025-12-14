@@ -1,6 +1,12 @@
 /**
  * Admin endpoints - extended for full integrity, management, and deployment readiness.
  * Includes all verification, ban/unban, promote/demote, user/wallet/trade management, price/broadcast, logging, settings.
+ *
+ * Minimal safe enhancements:
+ *  - listUsers: now selects safe fields only (avoid leaking hashed passwords or sensitive tokens)
+ *  - getUserBalances: new read-only ledger-backed endpoint (uses utils/ledger.getAllBalances)
+ *
+ * No trading, deposit or ledger write logic changed here.
  */
 const path = require('path');
 const fs = require('fs');
@@ -15,6 +21,8 @@ const AuditLog = require('../models/AuditLog');
 const Setting = require('../models/Setting');
 const DepositRequest = require("../models/DepositRequest");
 const WithdrawRequest = require("../models/WithdrawRequest");
+
+const { getAllBalances } = require('../utils/ledger');
 
 async function createAudit(action, actorId, details = {}) {
   try {
@@ -42,6 +50,7 @@ module.exports = {
   },
 
   // GET /admin/users?search=
+  // Minimal, safe projection to avoid leaking password or other sensitive fields.
   async listUsers(req, res) {
     try {
       const q = (req.query.search || "").trim();
@@ -50,7 +59,12 @@ module.exports = {
         const regex = new RegExp(q.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&'), 'i');
         filter.$or = [{ username: regex }, { email: regex }, { _id: regex }];
       }
-      const users = await User.find(filter).limit(500).lean();
+      // Select only safe fields
+      const users = await User.find(filter)
+        .limit(500)
+        .select('email username wallets role isBanned createdAt updatedAt referralCode')
+        .lean();
+
       const normalized = users.map(u => {
         const wallets = Array.isArray(u.wallets) ? u.wallets : [];
         const balanceSummary = wallets.slice(0, 5).map(w => `${w.coin}:${w.balance}`).join(', ');
@@ -60,6 +74,34 @@ module.exports = {
     } catch (e) {
       console.error("listUsers error:", e && (e.stack || e.message || e));
       return res.status(500).json({ error: "Failed to list users" });
+    }
+  },
+
+  // New: GET /admin/user/:id/balances
+  // Returns ledger-backed balances per coin for specified user (read-only).
+  async getUserBalances(req, res) {
+    try {
+      const userId = req.params.id;
+      if (!userId) return res.status(400).json({ success: false, error: "Missing user id" });
+
+      // Verify user exists (avoid returning balances for invalid user ids)
+      const user = await User.findById(userId).select('_id email username').lean();
+      if (!user) return res.status(404).json({ success: false, error: "User not found" });
+
+      // Use ledger aggregation to compute last balances per coin
+      const balances = await getAllBalances(userId);
+
+      // Return tidy structure
+      return res.json({
+        success: true,
+        data: {
+          user: { id: user._id, email: user.email, username: user.username },
+          balances: balances // array [{ coin, balance }]
+        }
+      });
+    } catch (e) {
+      console.error("getUserBalances error:", e && (e.stack || e.message || e));
+      return res.status(500).json({ success: false, error: "Failed to get user balances" });
     }
   },
 
