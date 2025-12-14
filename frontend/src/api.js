@@ -1,16 +1,28 @@
 // frontend/src/api.js
-// Central API client and helper functions
-// - Exports default axios instance (api)
-// - Exports helper functions used throughout the frontend.
-// - Ensures Authorization header is attached from localStorage/sessionStorage
-// - Ensures relative API calls are routed under /api/* by prefixing when needed.
+// Central API client and helper functions (frontend-only)
+//
+// Purpose:
+// - Ensure ALL API requests target the backend origin using a FULL absolute base URL.
+// - Keep Authorization: Bearer <token> attached automatically.
+// - Minimal, safe changes only to this file to satisfy static-site constraints (no proxy/rewrite).
+//
+// Behavior:
+// - Reads backend origin from REACT_APP_BACKEND_BASE (preferred) or REACT_APP_API_BASE fallback.
+// - Constructs an absolute baseURL that includes the "/api" prefix (e.g. https://backend.onrender.com/api).
+// - Uses axios instance with that baseURL so calls like api.get("/admin/summary") resolve to
+//   https://backend.onrender.com/api/admin/summary.
+// - submitKyc(FormData) uses raw axios.post to the full absolute URL so multipart boundaries are handled by the browser.
 
 import axios from "axios";
 
-const RAW_API_BASE = (process.env.REACT_APP_API_BASE || "https://aexon-qedx.onrender.com").replace(/\/+$/, "");
-// Keep baseURL as the raw host (do NOT append "/api" here)
+// Backend host/origin (absolute) - prefer explicit env var REACT_APP_BACKEND_BASE
+const BACKEND_HOST = (process.env.REACT_APP_BACKEND_BASE || process.env.REACT_APP_API_BASE || "https://aexon-qedx.onrender.com").replace(/\/+$/, "");
+
+// Full API base (absolute) — includes /api path. This ensures the static frontend calls the backend origin directly.
+const API_BASE_URL = `${BACKEND_HOST}/api`;
+
 const api = axios.create({
-  baseURL: RAW_API_BASE,
+  baseURL: API_BASE_URL,
   headers: {
     "Content-Type": "application/json",
   },
@@ -37,30 +49,16 @@ function readAuthToken() {
   return null;
 }
 
-// Request interceptor: attach token AND ensure relative API paths are prefixed with /api
+// Attach token automatically to all requests to the backend API
 api.interceptors.request.use((config) => {
   try {
-    // Attach auth token if present
     const token = readAuthToken();
     if (token) {
       config.headers = { ...(config.headers || {}), Authorization: `Bearer ${token}` };
     }
-
-    // Normalize URL: if caller passed a relative path like "/me" or "/admin/summary"
-    // ensure it targets the backend /api prefix: "/api/me", "/api/admin/summary".
-    // Do NOT modify absolute URLs (http://...) or URLs already starting with /api/.
-    if (config && typeof config.url === "string") {
-      const url = config.url;
-      // If it is an absolute URL (http/https), leave it alone
-      if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(url)) {
-        // If it starts with "/" but not "/api/", prefix "/api"
-        if (url.startsWith("/") && !url.startsWith("/api/")) {
-          config.url = `/api${url}`;
-        }
-      }
-    }
+    // Note: config.url will be appended to API_BASE_URL by axios; callers should use relative paths like "/admin/summary" or "/coin".
   } catch (e) {
-    // swallow errors to avoid blocking requests
+    // swallow errors so requests still go out
   }
   return config;
 });
@@ -88,81 +86,84 @@ api.interceptors.response.use(
   }
 );
 
-// --- Helper endpoints used across the frontend ---
-// All helper functions target the backend under the "/api" prefix explicitly where beneficial,
-// but the request interceptor also ensures calls like api.get("/me") are normalized to "/api/me".
+// --------------------
+// Public / API helpers
+// --------------------
+// Note: Because baseURL includes the absolute backend origin + "/api", callers throughout the app
+// can call api.get("/me") or api.get("/admin/summary") and requests will hit the correct backend URL.
 
-// Public / API calls
 export function getCoins() {
-  return api.get("/api/coin");
+  return api.get("/coin");
 }
 
 export function getMe() {
-  return api.get("/api/user/me");
+  return api.get("/user/me");
 }
 
 export function getWallet() {
-  return api.get("/api/wallet");
+  return api.get("/wallet");
 }
 
 export function getAnnouncements() {
-  return api.get("/api/announcements");
+  return api.get("/announcements");
 }
 
 export function getCryptoNews() {
-  return api.get("/api/news");
+  return api.get("/news");
 }
 
 export function forgotPassword(email) {
-  return api.post("/api/auth/forgot-password", { email });
+  return api.post("/auth/forgot-password", { email });
 }
 
 export function resetPassword(token, password) {
-  return api.post("/api/auth/reset-password", { token, password });
+  return api.post("/auth/reset-password", { token, password });
 }
 
 // submit KYC (FormData or JSON)
-// Use raw axios for FormData to allow browser to set multipart boundaries.
+// Use raw axios for FormData so the browser sets multipart boundaries correctly.
+// Build absolute URL using BACKEND_HOST to avoid any baseURL confusion.
 export function submitKyc(formData) {
   if (formData instanceof FormData) {
-    const url = `${RAW_API_BASE}/api/kyc`;
+    const url = `${BACKEND_HOST}/api/kyc`;
     return axios.post(url, formData, {
       headers: { Authorization: `Bearer ${readAuthToken() || ""}` },
     });
   }
-  return api.post("/api/kyc", formData);
+  return api.post("/kyc", formData);
 }
 
 export function getMyTrades() {
-  return api.get("/api/trade/my");
+  return api.get("/trade/my");
 }
 
 // Auth convenience helpers (these hit /api/auth/*)
 export function login(email, password) {
-  return api.post("/api/auth/login", { email, password });
+  return api.post("/auth/login", { email, password });
 }
 
 export function register(payload) {
-  return api.post("/api/auth/register", payload);
+  return api.post("/auth/register", payload);
 }
 
-// --- Admin helper functions (minimal, safe) ---
-// These wrap existing /api/admin endpoints and rely on the axios instance so Authorization header is automatic.
+// --------------------
+// Admin helper functions (minimal, safe)
+// --------------------
 
 // Ban a user
 export async function adminBanUser(userId) {
   if (!userId) throw new Error("userId required");
-  return api.post(`/api/admin/user/${userId}/action`, { action: "ban" });
+  return api.post(`/admin/user/${userId}/action`, { action: "ban" });
 }
 
 // Unban a user
 export async function adminUnbanUser(userId) {
   if (!userId) throw new Error("userId required");
-  return api.post(`/api/admin/user/${userId}/action`, { action: "unban" });
+  return api.post(`/admin/user/${userId}/action`, { action: "unban" });
 }
 
 // Set deposit address(es) for a user.
-// Supports two forms:
+// Supports:
 //  - Single: adminSetDepositAddress({ userId, coin: "USDT", address: "addr123" })
 //  - Multiple: adminSetDepositAddress({ userId, address: { USDT: "addr1", BTC: "addr2" } })
 export async function adminSetDepositAddress({ userId, coin, address }) {
@@ -174,7 +175,7 @@ export async function adminSetDepositAddress({ userId, coin, address }) {
     const results = [];
     for (const [c, addr] of entries) {
       try {
-        const r = await api.post(`/api/admin/user/${userId}/deposit-address`, { coin: c, address: String(addr) });
+        const r = await api.post(`/admin/user/${userId}/deposit-address`, { coin: c, address: String(addr) });
         results.push({ coin: c, ok: true, resp: r.data });
       } catch (e) {
         results.push({ coin: c, ok: false, error: e?.response?.data || e?.message || String(e) });
@@ -184,8 +185,8 @@ export async function adminSetDepositAddress({ userId, coin, address }) {
   }
 
   if (!coin || !address) throw new Error("coin and address required for single update");
-  return api.post(`/api/admin/user/${userId}/deposit-address`, { coin: String(coin).toUpperCase(), address: String(address) });
+  return api.post(`/admin/user/${userId}/deposit-address`, { coin: String(coin).toUpperCase(), address: String(address) });
 }
 
-// Default export: axios instance (host base w/out forced /api)
+// Default export: configured axios instance (absolute backend API base)
 export default api;
