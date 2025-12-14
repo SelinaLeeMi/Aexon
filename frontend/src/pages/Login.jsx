@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Box, TextField, Button, Typography, Paper, Alert } from "@mui/material";
 import { useNavigate } from "react-router-dom";
-import api from "../api";
+import api, { login } from "../api";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -14,10 +14,15 @@ export default function Login() {
   const [userId, setUserId] = useState("");
 
   const handleLogin = async (e) => {
-    e.preventDefault();
+    // handle being called without an event (e.g., from verify flow)
+    try {
+      if (e && typeof e.preventDefault === "function") e.preventDefault();
+    } catch (err) {}
+
     setError(""); setInfo("");
     try {
-      const res = await api.post("/auth/login", { email, password });
+      // Use the shared login helper from api.js which targets the correct backend route (/api/auth/login)
+      const res = await login(email, password);
       localStorage.setItem("token", res.data.token);
       localStorage.setItem("user", JSON.stringify(res.data.user));
       navigate("/home");
