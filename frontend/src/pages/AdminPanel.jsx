@@ -61,18 +61,17 @@ export default function AdminPanel() {
   const notify = useNotification();
   const realtime = useRealtime();
 
-  // Ensure Authorization header is attached for all admin API requests issued from this component.
-  // We register a request interceptor on mount and eject it on unmount to avoid duplicate interceptors.
   useEffect(() => {
     const interceptor = api.interceptors.request.use(
       (config) => {
         try {
           const token = localStorage.getItem("token");
           if (token) {
-            config.headers = { ...(config.headers || {}), Authorization: `Bearer ${token}` };
+            config.headers = config.headers || {};
+            config.headers.Authorization = `Bearer ${token}`;
           }
         } catch (e) {
-          // swallow errors to avoid blocking requests
+          // ignore
         }
         return config;
       },
@@ -81,7 +80,9 @@ export default function AdminPanel() {
     return () => {
       try {
         api.interceptors.request.eject(interceptor);
-      } catch (e) {}
+      } catch (e) {
+        // ignore
+      }
     };
   }, []);
 
@@ -130,14 +131,13 @@ export default function AdminPanel() {
 
   const [busy, setBusy] = useState(false);
 
-  // Basic refresh helpers
   const refreshSummary = async () => {
     setLoadingSummary(true);
     try {
       const r = await api.get("/admin/summary");
       setSummary(r.data?.data || r.data || null);
     } catch (e) {
-      // ignore; show notification on demand
+      // ignore
     } finally {
       setLoadingSummary(false);
     }
@@ -205,17 +205,14 @@ export default function AdminPanel() {
   };
 
   useEffect(() => {
-    // initial fetch
     refreshSummary();
     fetchUsers();
     fetchWallets(walletFilter);
     fetchTrades();
     fetchSettings();
-    // also tail logs if configured
     // eslint-disable-next-line
   }, []);
 
-  // Pull realtime prices into local suggestions where available
   const symbolOptions = useMemo(() => {
     const keys = realtime?.prices ? Object.keys(realtime.prices) : [];
     const base = ["BTC", "ETH", "USDT", "USDC", "BNB", "XRP"];
@@ -223,7 +220,6 @@ export default function AdminPanel() {
     return merged;
   }, [realtime?.prices]);
 
-  // User actions
   const doUserAction = async (userId, action) => {
     if (!window.confirm(`Confirm ${action} for user ${userId}?`)) return;
     setBusy(true);
@@ -274,7 +270,6 @@ export default function AdminPanel() {
     }
   };
 
-  // Wallet actions (approve/reject)
   const handleWalletApprove = async (id) => {
     if (!window.confirm("Approve this wallet/deposit?")) return;
     setBusy(true);
@@ -306,7 +301,6 @@ export default function AdminPanel() {
     }
   };
 
-  // Trades actions
   const handleTradeCancel = async (tradeId) => {
     if (!window.confirm("Cancel this trade?")) return;
     setBusy(true);
@@ -322,7 +316,6 @@ export default function AdminPanel() {
     }
   };
 
-  // Broadcast
   const handleBroadcast = async () => {
     if (!broadcastMessage && !priceValue) {
       notify.showNotification("Provide message or price to broadcast", "error", 4000);
@@ -354,7 +347,6 @@ export default function AdminPanel() {
     }
   };
 
-  // Price override dedicated
   const handlePriceOverride = async () => {
     if (!priceSymbol || priceValue === "") {
       notify.showNotification("Provide symbol and price", "error", 4000);
@@ -373,7 +365,6 @@ export default function AdminPanel() {
     }
   };
 
-  // Logs tail toggle
   useEffect(() => {
     let tailTimer = null;
     if (tailLogs) {
@@ -400,7 +391,7 @@ export default function AdminPanel() {
     }
   };
 
-  const downloadCsv = (rows = [], filename = "export.csv") => {
+  function downloadCsv(rows = [], filename = "export.csv") {
     if (!rows || rows.length === 0) {
       notify.showNotification("No rows to export", "error", 3000);
       return;
@@ -416,7 +407,7 @@ export default function AdminPanel() {
     a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
-  };
+  }
 
   return (
     <Box sx={{ px: 2, pt: 2, pb: 10, maxWidth: 1200, mx: "auto" }}>
