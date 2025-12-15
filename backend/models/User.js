@@ -51,6 +51,14 @@ const userSchema = new mongoose.Schema(
     resetPasswordExpires: { type: Date },
     role: { type: String, enum: ["user", "admin"], default: "user" },
     isBanned: { type: Boolean, default: false },
+
+    // New: depositAddresses per user, per coin, per network.
+    // Structure:
+    // depositAddresses: {
+    //   BTC: { Mainnet: "addr" },
+    //   USDT: { ERC20: "0x...", TRC20: "T..." }
+    // }
+    depositAddresses: { type: Object, default: {} }
   },
   { timestamps: true }
 );

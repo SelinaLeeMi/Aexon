@@ -37,6 +37,40 @@ router.use("/kyc", kycRouter);
 router.use("/news", newsRouter);
 router.use("/referral", referralRouter);
 
+// USER deposit address lookup for currently authenticated user
+// GET /api/user/deposit-address?coin=BTC&network=Mainnet
+router.get("/user/deposit-address", async (req, res) => {
+  try {
+    // app.js attaches req.user when Bearer token present (lean user or payload)
+    const user = req.user;
+    if (!user || !user._id) return res.status(401).json({ success: false, error: "Not authenticated" });
+
+    const coin = (req.query.coin || "").toString().toUpperCase();
+    const network = (req.query.network || "").toString();
+
+    if (!coin || !network) {
+      return res.status(400).json({ success: false, error: "coin and network are required" });
+    }
+
+    // If req.user is a lean user document (from app middleware) it may already include depositAddresses
+    // If not, fetch full user doc
+    const User = require("../models/User");
+    let userDoc = user;
+    if (!user.depositAddresses) {
+      userDoc = await User.findById(user._id).lean().exec();
+    }
+
+    const address = userDoc && userDoc.depositAddresses && userDoc.depositAddresses[coin] && userDoc.depositAddresses[coin][network];
+    if (!address) {
+      return res.status(404).json({ success: false, error: "Deposit address not assigned" });
+    }
+    return res.json({ success: true, address });
+  } catch (err) {
+    console.error("GET /user/deposit-address error:", err && (err.stack || err.message || err));
+    return res.status(500).json({ success: false, error: "Failed to fetch deposit address" });
+  }
+});
+
 // API root info
 router.get("/", (req, res) => {
   res.json({
