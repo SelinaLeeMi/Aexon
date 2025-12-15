@@ -5,9 +5,6 @@
 // - Ensure ALL API requests target the backend origin using a FULL absolute base URL.
 // - Keep Authorization: Bearer <token> attached automatically.
 // - Minimal, safe changes only to this file to align frontend endpoint paths with backend routes.
-//
-// Note: This file intentionally uses absolute backend origin (BACKEND_HOST + "/api") as baseURL.
-// Do NOT modify routing or components; this file maps frontend helpers to backend endpoints.
 
 import axios from "axios";
 
@@ -48,7 +45,7 @@ api.interceptors.request.use((config) => {
     if (token) {
       config.headers = { ...(config.headers || {}), Authorization: `Bearer ${token}` };
     }
-    // callers use relative paths like "/me" or "/admin/summary"; axios will resolve against API_BASE_URL
+    // callers use relative paths like "/user/me" or "/admin/summary"; axios will resolve against API_BASE_URL
   } catch (e) {}
   return config;
 });
@@ -79,7 +76,7 @@ api.interceptors.response.use(
 // Public / API helpers
 // --------------------
 // Corrected endpoint paths here to exactly match backend routes:
-// - GET /api/me
+// - GET /api/user/me  (important fix)
 // - GET /api/wallet
 // - GET /api/coin
 // - POST /api/auth/login
@@ -91,8 +88,8 @@ export function getCoins() {
 }
 
 export function getMe() {
-  // Backend: GET /api/me
-  return api.get("/me");
+  // Backend: GET /api/user/me  (use the user router's "me" endpoint)
+  return api.get("/user/me");
 }
 
 export function getWallet() {
@@ -120,6 +117,7 @@ export function resetPassword(token, password) {
 
 // submit KYC (FormData or JSON)
 // Use raw axios for FormData so the browser sets multipart boundaries correctly.
+// Build absolute URL using BACKEND_HOST to avoid any baseURL confusion.
 export function submitKyc(formData) {
   if (formData instanceof FormData) {
     const url = `${BACKEND_HOST}/api/kyc`;
@@ -158,7 +156,7 @@ export async function adminUnbanUser(userId) {
 }
 
 // Set deposit address(es) for a user.
-// Supports single and multiple mappings.
+// Supports two forms: single coin or an object mapping of coin->address.
 export async function adminSetDepositAddress({ userId, coin, address }) {
   if (!userId) throw new Error("userId required");
 
