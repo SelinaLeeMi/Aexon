@@ -5,66 +5,89 @@ import api, { login } from "../api";
 
 export default function Login() {
   const navigate = useNavigate();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
-  const [step, setStep] = useState("login"); // "login", "verify"
+  const [step, setStep] = useState("login"); // "login" | "verify"
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
-  const [userId, setUserId] = useState("");
 
-  const handleLogin = async (e) => {
-    // handle being called without an event (e.g., from verify flow)
-    try {
-      if (e && typeof e.preventDefault === "function") e.preventDefault();
-    } catch (err) {}
+  // --------------------
+  // LOGIN
+  // --------------------
+  const handleLogin = async () => {
+    setError("");
+    setInfo("");
 
-    setError(""); setInfo("");
     try {
-      // Use the shared login helper from api.js which targets the correct backend route (/api/auth/login)
       const res = await login(email, password);
+
+      // Store auth
       localStorage.setItem("token", res.data.token);
       localStorage.setItem("user", JSON.stringify(res.data.user));
+
+      // Go to app
       navigate("/home");
     } catch (err) {
-      const code = err.response?.data?.code || "";
-      const msg = err.response?.data?.message || err.response?.data?.error || err.message || "Login failed.";
+      const code = err?.response?.data?.code;
+      const msg =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        err.message ||
+        "Login failed";
+
+      // Email not verified flow
       if (
         code === "EMAIL_NOT_VERIFIED" ||
         (typeof msg === "string" && msg.toLowerCase().includes("verify"))
       ) {
-        navigate("/register", { state: { email } });
-        return;
+        setStep("verify");
+        setInfo("Please verify your email to continue.");
       } else {
-        setError(typeof msg === "string" ? msg : "Login failed.");
+        setError(msg);
       }
     }
   };
 
-  const handleVerify = async (e) => {
-    e.preventDefault();
-    setError(""); setInfo("");
+  // --------------------
+  // VERIFY EMAIL
+  // --------------------
+  const handleVerify = async () => {
+    setError("");
+    setInfo("");
+
     try {
-      await api.post("/auth/confirm", { userId, code });
+      await api.post("/auth/confirm", { code });
       setInfo("Email verified! Logging you in...");
-      setTimeout(() => handleLogin(e), 800);
+      setTimeout(handleLogin, 800);
     } catch (err) {
-      const msg = err.response?.data?.message || err.response?.data?.error || err.message || "Verification failed.";
-      setError(typeof msg === "string" ? msg : "Verification failed.");
+      const msg =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        err.message ||
+        "Verification failed";
+      setError(msg);
     }
   };
 
+  // --------------------
+  // RESEND CODE
+  // --------------------
   const resendCode = async () => {
-    setError(""); setInfo("");
+    setError("");
+    setInfo("");
+
     try {
-      await api.post("/auth/register", {
-        email,
-        password,
-      });
-      setInfo("Verification code sent. Please check your email.");
+      await api.post("/auth/register", { email, password });
+      setInfo("Verification code resent. Check your email.");
     } catch (err) {
-      const msg = err.response?.data?.message || err.response?.data?.error || err.message || "Failed to resend code.";
-      setError(typeof msg === "string" ? msg : "Failed to resend code.");
+      const msg =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        err.message ||
+        "Failed to resend code";
+      setError(msg);
     }
   };
 
@@ -82,18 +105,22 @@ export default function Login() {
         <Typography variant="h5" fontWeight={700} sx={{ mb: 2 }}>
           Sign In to Aexon
         </Typography>
+
         {error && (
           <Alert severity="error" sx={{ mb: 2 }}>
-            {typeof error === "string" ? error : error?.message || JSON.stringify(error)}
+            {error}
           </Alert>
         )}
+
         {info && (
           <Alert severity="info" sx={{ mb: 2 }}>
             {info}
           </Alert>
         )}
+
+        {/* ---------------- LOGIN STEP ---------------- */}
         {step === "login" && (
-          <form onSubmit={handleLogin}>
+          <>
             <TextField
               label="Email"
               type="email"
@@ -103,6 +130,7 @@ export default function Login() {
               onChange={(e) => setEmail(e.target.value)}
               sx={{ mb: 2 }}
             />
+
             <TextField
               label="Password"
               type="password"
@@ -112,9 +140,16 @@ export default function Login() {
               onChange={(e) => setPassword(e.target.value)}
               sx={{ mb: 2 }}
             />
-            <Button type="submit" fullWidth variant="contained" sx={{ mt: 1 }}>
+
+            <Button
+              fullWidth
+              variant="contained"
+              sx={{ mt: 1 }}
+              onClick={handleLogin}
+            >
               Login
             </Button>
+
             <Button
               fullWidth
               variant="text"
@@ -123,7 +158,38 @@ export default function Login() {
             >
               Create an account
             </Button>
-          </form>
+          </>
+        )}
+
+        {/* ---------------- VERIFY STEP ---------------- */}
+        {step === "verify" && (
+          <>
+            <TextField
+              label="Verification Code"
+              fullWidth
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              sx={{ mb: 2 }}
+            />
+
+            <Button
+              fullWidth
+              variant="contained"
+              sx={{ mt: 1 }}
+              onClick={handleVerify}
+            >
+              Verify Email
+            </Button>
+
+            <Button
+              fullWidth
+              variant="text"
+              sx={{ mt: 1 }}
+              onClick={resendCode}
+            >
+              Resend Code
+            </Button>
+          </>
         )}
       </Paper>
     </Box>
