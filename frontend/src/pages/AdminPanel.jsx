@@ -42,44 +42,6 @@ import api from "../api";
 import { useNotification } from "../components/NotificationProvider";
 import { useRealtime } from "../context/RealtimeContext";
 
-/**
- * AdminPanel (full-featured)
- *
- * Purpose:
- * - Extend the earlier minimal broadcast UI into a comprehensive admin console.
- * - Tabs included:
- *    1. Overview (simple stats + quick broadcast)
- *    2. Users (search, view, ban/promote, adjust balances)
- *    3. Wallets (pending deposits/withdrawals review)
- *    4. Trades (view/force/cancel)
- *    5. Price Overrides (manual price set + broadcast)
- *    6. Logs (tail / fetch)
- *    7. Settings (basic toggles)
- *
- * Implementation notes:
- * - All actions call the expected backend endpoints under /admin/* or common endpoints:
- *    - GET /admin/summary
- *    - GET /admin/users?search=
- *    - POST /admin/user/:id/action  { action: 'ban'|'unban'|'promote'|'demote' }
- *    - POST /admin/user/:id/adjust-balance { coin, delta, reason }
- *    - GET /admin/wallets?status=pending
- *    - POST /admin/wallets/:id/approve
- *    - POST /admin/wallets/:id/reject { reason }
- *    - GET /admin/trades
- *    - POST /admin/trades/:id/cancel
- *    - POST /admin/broadcast { type, payload }
- *    - POST /admin/price_override { symbol, price, broadcast: true|false }
- *    - GET /admin/logs?tail=true&limit=200
- *    - GET /admin/settings
- *    - POST /admin/settings
- *
- * - The backend must implement and secure those endpoints (admin-only).
- * - The UI will optimistically refresh lists after actions; errors are surfaced via NotificationProvider.
- *
- * - This file is intentionally comprehensive so you don't need multiple smaller files for admin tasks.
- * - Replace or extend endpoints if your backend uses different routes; I tried to match common patterns.
- */
-
 function SectionPaper({ title, icon, children, sx }) {
   return (
     <Paper sx={{ p: 2, mb: 2, borderRadius: 2, ...sx }}>
@@ -98,6 +60,30 @@ function SectionPaper({ title, icon, children, sx }) {
 export default function AdminPanel() {
   const notify = useNotification();
   const realtime = useRealtime();
+
+  // Ensure Authorization header is attached for all admin API requests issued from this component.
+  // We register a request interceptor on mount and eject it on unmount to avoid duplicate interceptors.
+  useEffect(() => {
+    const interceptor = api.interceptors.request.use(
+      (config) => {
+        try {
+          const token = localStorage.getItem("token");
+          if (token) {
+            config.headers = { ...(config.headers || {}), Authorization: `Bearer ${token}` };
+          }
+        } catch (e) {
+          // swallow errors to avoid blocking requests
+        }
+        return config;
+      },
+      (error) => Promise.reject(error)
+    );
+    return () => {
+      try {
+        api.interceptors.request.eject(interceptor);
+      } catch (e) {}
+    };
+  }, []);
 
   const [tab, setTab] = useState(0);
 
@@ -231,9 +217,7 @@ export default function AdminPanel() {
 
   // Pull realtime prices into local suggestions where available
   const symbolOptions = useMemo(() => {
-    // realtime.prices expected shape: { BTC: { price }, ETH: {...} }
     const keys = realtime?.prices ? Object.keys(realtime.prices) : [];
-    // add some common fallbacks
     const base = ["BTC", "ETH", "USDT", "USDC", "BNB", "XRP"];
     const merged = Array.from(new Set([...base, ...keys])).slice(0, 200);
     return merged;
@@ -350,22 +334,16 @@ export default function AdminPanel() {
         type: "system_message",
         payload: { title: broadcastTitle, message: broadcastMessage }
       };
-      // If priceValue provided, send price update first (optional)
       if (priceValue !== "") {
-        // send price_override optionally
         await api.post("/admin/price_override", { symbol: priceSymbol.toUpperCase(), price: Number(priceValue), broadcast: true });
         notify.showNotification("Price override broadcasted", "success", 3000);
       }
-      // send system message if present
       if (broadcastMessage) {
         await api.post("/admin/broadcast", payload);
         notify.showNotification("System broadcast sent", "success", 3000);
       }
-      // pro-active local update (RealtimeProvider may already broadcast when backend does)
-      // quick attempt: call /coin to refresh prices into RealtimeProvider seed if backend updated coin endpoint
       try {
-        const coinsRes = await api.get("/coin");
-        // let RealtimeProvider pick up via polling/WS; we just trigger a small notification here
+        await api.get("/coin");
         notify.showNotification("Broadcast complete, clients will receive update", "success", 4000);
       } catch {}
       refreshSummary();
@@ -386,7 +364,6 @@ export default function AdminPanel() {
     try {
       await api.post("/admin/price_override", { symbol: priceSymbol.toUpperCase(), price: Number(priceValue), broadcast: true });
       notify.showNotification(`Price override ${priceSymbol.toUpperCase()} => ${priceValue}`, "success", 3000);
-      // Try to nudge RealtimeProvider by hitting /coin (seed)
       try { await api.get("/coin"); } catch {}
       refreshSummary();
     } catch (e) {
@@ -400,7 +377,6 @@ export default function AdminPanel() {
   useEffect(() => {
     let tailTimer = null;
     if (tailLogs) {
-      // poll logs every 3s when tailing
       fetchLogs(true);
       tailTimer = setInterval(() => fetchLogs(true), 3000);
     } else {
@@ -409,7 +385,6 @@ export default function AdminPanel() {
     return () => {
       if (tailTimer) clearInterval(tailTimer);
     };
-    // eslint-disable-next-line
   }, [tailLogs]);
 
   const saveSettings = async (newSettings) => {
@@ -425,7 +400,6 @@ export default function AdminPanel() {
     }
   };
 
-  // Simple CSV export helper
   const downloadCsv = (rows = [], filename = "export.csv") => {
     if (!rows || rows.length === 0) {
       notify.showNotification("No rows to export", "error", 3000);
@@ -477,7 +451,6 @@ export default function AdminPanel() {
         </Tabs>
       </Paper>
 
-      {/* Tab panels */}
       {tab === 0 && (
         <Box>
           <SectionPaper title="Overview" icon={<HistoryIcon />}>
@@ -610,7 +583,6 @@ export default function AdminPanel() {
             </Box>
           </SectionPaper>
 
-          {/* Adjust balance dialog */}
           <Dialog open={adjOpen} onClose={() => setAdjOpen(false)}>
             <DialogTitle>Adjust Balance</DialogTitle>
             <DialogContent>
@@ -843,7 +815,6 @@ export default function AdminPanel() {
         </Box>
       )}
 
-      {/* Small inline snack fallback if NotificationProvider unavailable */}
       <Snackbar open={false} autoHideDuration={3000} onClose={() => {}} anchorOrigin={{ vertical: "bottom", horizontal: "center" }}>
         <Alert severity="info" action={<IconButton size="small"><CloseIcon fontSize="small" /></IconButton>}>Placeholder</Alert>
       </Snackbar>
