@@ -23,11 +23,54 @@ export default function Login() {
     try {
       const res = await login(email, password);
 
-      // Store auth
-      localStorage.setItem("token", res.data.token);
-      localStorage.setItem("user", JSON.stringify(res.data.user));
+      // Robustly extract token from common response shapes
+      const data = res?.data || {};
+      let token =
+        data.token ||
+        data.accessToken ||
+        data.auth?.token ||
+        data.data?.token ||
+        data.data?.accessToken ||
+        data.result?.token ||
+        null;
 
-      // Go to app
+      // Some APIs nest under `data` twice (axios wraps) - check that too
+      if (!token && data.data && typeof data.data === "object") {
+        token = data.data.token || data.data.accessToken || null;
+      }
+
+      // If we still don't have a token, attempt to find in headers (rare)
+      if (!token) {
+        const possible = res?.headers?.authorization || res?.headers?.Authorization || "";
+        if (typeof possible === "string" && possible.toLowerCase().startsWith("bearer ")) {
+          token = possible.split(" ")[1];
+        }
+      }
+
+      if (!token) {
+        // If no token found, treat as failure (backend should return a token for JWT flows)
+        throw new Error("Authentication token not present in response");
+      }
+
+      // Store auth under one consistent key
+      localStorage.setItem("token", token);
+
+      // Try to extract user object if present in response
+      const user =
+        data.user ||
+        data.data?.user ||
+        data.result?.user ||
+        (data.userId ? { _id: data.userId } : null) ||
+        null;
+      if (user) {
+        try {
+          localStorage.setItem("user", JSON.stringify(user));
+        } catch (e) {
+          // swallow storage errors
+        }
+      }
+
+      // Navigate to home after token is stored
       navigate("/home");
     } catch (err) {
       const code = err?.response?.data?.code;

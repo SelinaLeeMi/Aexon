@@ -1,10 +1,6 @@
 // frontend/src/api.js
 // Central API client and helper functions (frontend-only)
-//
-// Purpose:
-// - Ensure ALL API requests target the backend origin using a FULL absolute base URL.
-// - Keep Authorization: Bearer <token> attached automatically.
-// - Minimal, safe changes only to this file to align frontend endpoint paths with backend routes.
+// Ensures Authorization header uses token stored under "token"
 
 import axios from "axios";
 
@@ -27,13 +23,21 @@ export function setForceLogoutHandler(fn) {
   onForceLogout = fn;
 }
 
-// Helper: get token from canonical storage locations
+// Helper: get token from canonical storage location "token" (fall back to older keys if present)
 function readAuthToken() {
   try {
+    // Primary canonical key
     const t = localStorage.getItem("token");
     if (t) return t;
-    const s = sessionStorage.getItem("token");
-    if (s) return s;
+    // Backward compatibility fallbacks (do not prefer these; migrate to "token")
+    const alt = localStorage.getItem("accessToken") || sessionStorage.getItem("token") || sessionStorage.getItem("accessToken");
+    if (alt) {
+      // normalize into canonical key for future reads
+      try {
+        localStorage.setItem("token", alt);
+      } catch (e) {}
+      return alt;
+    }
   } catch (e) {}
   return null;
 }
@@ -45,7 +49,6 @@ api.interceptors.request.use((config) => {
     if (token) {
       config.headers = { ...(config.headers || {}), Authorization: `Bearer ${token}` };
     }
-    // callers use relative paths like "/user/me" or "/admin/summary"; axios will resolve against API_BASE_URL
   } catch (e) {}
   return config;
 });
@@ -75,35 +78,23 @@ api.interceptors.response.use(
 // --------------------
 // Public / API helpers
 // --------------------
-// Corrected endpoint paths here to exactly match backend routes:
-// - GET /api/user/me  (important fix)
-// - GET /api/wallet
-// - GET /api/coin
-// - POST /api/auth/login
-// - POST /api/auth/register
-
 export function getCoins() {
-  // Backend: GET /api/coin
   return api.get("/coin");
 }
 
 export function getMe() {
-  // Backend: GET /api/user/me  (use the user router's "me" endpoint)
   return api.get("/user/me");
 }
 
 export function getWallet() {
-  // Backend: GET /api/wallet
   return api.get("/wallet");
 }
 
 export function getAnnouncements() {
-  // Backend: GET /api/announcements
   return api.get("/announcements");
 }
 
 export function getCryptoNews() {
-  // Backend: GET /api/news
   return api.get("/news");
 }
 
@@ -115,9 +106,6 @@ export function resetPassword(token, password) {
   return api.post("/auth/reset-password", { token, password });
 }
 
-// submit KYC (FormData or JSON)
-// Use raw axios for FormData so the browser sets multipart boundaries correctly.
-// Build absolute URL using BACKEND_HOST to avoid any baseURL confusion.
 export function submitKyc(formData) {
   if (formData instanceof FormData) {
     const url = `${BACKEND_HOST}/api/kyc`;
@@ -141,10 +129,7 @@ export function register(payload) {
   return api.post("/auth/register", payload);
 }
 
-// --------------------
-// Admin helper functions (minimal, safe)
-// --------------------
-
+// Admin helpers
 export async function adminBanUser(userId) {
   if (!userId) throw new Error("userId required");
   return api.post(`/admin/user/${userId}/action`, { action: "ban" });
@@ -155,8 +140,6 @@ export async function adminUnbanUser(userId) {
   return api.post(`/admin/user/${userId}/action`, { action: "unban" });
 }
 
-// Set deposit address(es) for a user.
-// Supports two forms: single coin or an object mapping of coin->address.
 export async function adminSetDepositAddress({ userId, coin, address }) {
   if (!userId) throw new Error("userId required");
 
@@ -179,5 +162,4 @@ export async function adminSetDepositAddress({ userId, coin, address }) {
   return api.post(`/admin/user/${userId}/deposit-address`, { coin: String(coin).toUpperCase(), address: String(address) });
 }
 
-// Default export: configured axios instance (absolute backend API base)
 export default api;
