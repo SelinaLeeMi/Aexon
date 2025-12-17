@@ -15,8 +15,9 @@ export default function AdminPanel() {
       return;
     }
 
+    // ✅ CORRECT endpoint
     api
-      .get("/auth/me")
+      .get("/user/me")
       .then((res) => {
         if (res.data?.role !== "admin") {
           navigate("/");
