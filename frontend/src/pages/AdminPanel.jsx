@@ -15,17 +15,27 @@ export default function AdminPanel() {
       return;
     }
 
-    // ✅ CORRECT endpoint
     api
       .get("/user/me")
       .then((res) => {
-        if (res.data?.role !== "admin") {
+        // ✅ robust role extraction
+        const user =
+          res.data?.user ||
+          res.data?.data ||
+          res.data;
+
+        const role = user?.role;
+
+        if (role !== "admin") {
+          console.warn("Not admin:", user);
           navigate("/");
-        } else {
-          setReady(true);
+          return;
         }
+
+        setReady(true);
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error("Admin auth failed", err);
         localStorage.removeItem("token");
         navigate("/login");
       });
