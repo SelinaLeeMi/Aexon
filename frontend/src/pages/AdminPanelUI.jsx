@@ -61,30 +61,6 @@ export default function AdminPanel() {
   const notify = useNotification();
   const realtime = useRealtime();
 
-  useEffect(() => {
-    const interceptor = api.interceptors.request.use(
-      (config) => {
-        try {
-          const token = localStorage.getItem("token");
-          if (token) {
-            config.headers = config.headers || {};
-            config.headers.Authorization = `Bearer ${token}`;
-          }
-        } catch (e) {
-          // ignore
-        }
-        return config;
-      },
-      (error) => Promise.reject(error)
-    );
-    return () => {
-      try {
-        api.interceptors.request.eject(interceptor);
-      } catch (e) {
-        // ignore
-      }
-    };
-  }, []);
 
   const [tab, setTab] = useState(0);
 
