@@ -1,93 +1,73 @@
 import React, { useState } from "react";
-import { Box, TextField, Button, Typography, Paper, Alert } from "@mui/material";
+import {
+  Box,
+  TextField,
+  Button,
+  Typography,
+  Paper,
+  Alert,
+} from "@mui/material";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
-
-// IMPORTANT: use raw axios here (NO interceptors)
-const BACKEND_HOST =
-  process.env.REACT_APP_BACKEND_BASE ||
-  process.env.REACT_APP_API_BASE ||
-  "https://aexon-qedx.onrender.com";
+import api from "../api";
 
 export default function Login() {
   const navigate = useNavigate();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [code, setCode] = useState("");
-  const [step, setStep] = useState("login");
   const [error, setError] = useState("");
-  const [info, setInfo] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  // --------------------
-  // LOGIN (NO api.js)
-  // --------------------
   const handleLogin = async () => {
     setError("");
-    setInfo("");
+    setLoading(true);
 
     try {
-      const res = await axios.post(`${BACKEND_HOST}/api/auth/login`, {
+      // 🔐 LOGIN REQUEST
+      const res = await api.post("/auth/login", {
         email,
         password,
       });
 
-      const payload = res?.data || {};
-      const token =
-        payload.token ||
-        payload.accessToken ||
-        payload.data?.token ||
-        payload.data?.accessToken ||
-        null;
+      /**
+       * EXPECTED BACKEND RESPONSE SHAPE:
+       * {
+       *   success: true,
+       *   data: {
+       *     token: "JWT_HERE",
+       *     user: {...}
+       *   }
+       * }
+       */
+
+      const token = res?.data?.data?.token;
+      const user = res?.data?.data?.user;
 
       if (!token) {
-        throw new Error("Token missing from login response");
+        throw new Error("Login succeeded but token was not returned");
       }
 
-      // 🔐 STORE TOKEN (single source of truth)
+      // ✅ STORE TOKEN (SINGLE SOURCE OF TRUTH)
       localStorage.setItem("token", token);
 
-      console.log("LOGIN TOKEN SAVED:", token); // temporary debug
-
-      // Optional user storage
-      if (payload.data?.user) {
-        localStorage.setItem("user", JSON.stringify(payload.data.user));
+      if (user) {
+        localStorage.setItem("user", JSON.stringify(user));
       }
 
+      // ✅ CONFIRM STORAGE (for sanity)
+      console.log("Token saved:", localStorage.getItem("token"));
+
+      // ✅ GO HOME
       navigate("/home");
     } catch (err) {
-      const msg =
-        err?.response?.data?.message ||
-        err?.response?.data?.error ||
-        err.message ||
-        "Login failed";
-
-      if (msg.toLowerCase().includes("verify")) {
-        setStep("verify");
-        setInfo("Please verify your email.");
-      } else {
-        setError(msg);
-      }
-    }
-  };
-
-  // --------------------
-  // VERIFY EMAIL
-  // --------------------
-  const handleVerify = async () => {
-    setError("");
-    setInfo("");
-
-    try {
-      await axios.post(`${BACKEND_HOST}/api/auth/confirm`, { code });
-      setInfo("Email verified. Logging in...");
-      setTimeout(handleLogin, 800);
-    } catch (err) {
+      console.error("Login error:", err);
       setError(
         err?.response?.data?.message ||
           err?.response?.data?.error ||
-          "Verification failed"
+          "Login failed"
       );
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -101,51 +81,46 @@ export default function Login() {
         justifyContent: "center",
       }}
     >
-      <Paper sx={{ p: 4, minWidth: 340, bgcolor: "#181d28" }}>
+      <Paper sx={{ p: 4, minWidth: 360, bgcolor: "#181d28" }}>
         <Typography variant="h5" fontWeight={700} sx={{ mb: 2 }}>
           Sign In to Aexon
         </Typography>
 
-        {error && <Alert severity="error">{error}</Alert>}
-        {info && <Alert severity="info">{info}</Alert>}
-
-        {step === "login" && (
-          <>
-            <TextField
-              label="Email"
-              fullWidth
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              sx={{ mb: 2 }}
-            />
-            <TextField
-              label="Password"
-              type="password"
-              fullWidth
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              sx={{ mb: 2 }}
-            />
-            <Button fullWidth variant="contained" onClick={handleLogin}>
-              Login
-            </Button>
-          </>
+        {error && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {error}
+          </Alert>
         )}
 
-        {step === "verify" && (
-          <>
-            <TextField
-              label="Verification Code"
-              fullWidth
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              sx={{ mb: 2 }}
-            />
-            <Button fullWidth variant="contained" onClick={handleVerify}>
-              Verify Email
-            </Button>
-          </>
-        )}
+        <TextField
+          label="Email"
+          type="email"
+          fullWidth
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          sx={{ mb: 2 }}
+        />
+
+        <TextField
+          label="Password"
+          type="password"
+          fullWidth
+          required
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          sx={{ mb: 2 }}
+        />
+
+        <Button
+          fullWidth
+          variant="contained"
+          sx={{ mt: 1 }}
+          disabled={loading}
+          onClick={handleLogin}
+        >
+          {loading ? "Signing in..." : "Login"}
+        </Button>
       </Paper>
     </Box>
   );
