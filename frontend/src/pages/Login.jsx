@@ -1,12 +1,5 @@
 import React, { useState } from "react";
-import {
-  Box,
-  TextField,
-  Button,
-  Typography,
-  Paper,
-  Alert,
-} from "@mui/material";
+import { Box, TextField, Button, Typography, Paper, Alert } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import api from "../api";
 
@@ -16,58 +9,37 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
     setError("");
-    setLoading(true);
 
     try {
-      // 🔐 LOGIN REQUEST
-      const res = await api.post("/auth/login", {
-        email,
-        password,
-      });
+      const res = await api.post("/auth/login", { email, password });
 
-      /**
-       * EXPECTED BACKEND RESPONSE SHAPE:
-       * {
-       *   success: true,
-       *   data: {
-       *     token: "JWT_HERE",
-       *     user: {...}
-       *   }
-       * }
-       */
-
-      const token = res?.data?.data?.token;
-      const user = res?.data?.data?.user;
+      // ✅ EXACT backend response shape
+      const token = res?.data?.token;
+      const user = res?.data?.user;
 
       if (!token) {
-        throw new Error("Login succeeded but token was not returned");
+        throw new Error("Token missing from login response");
       }
 
-      // ✅ STORE TOKEN (SINGLE SOURCE OF TRUTH)
+      // ✅ Store token in ONE place only
       localStorage.setItem("token", token);
 
       if (user) {
         localStorage.setItem("user", JSON.stringify(user));
       }
 
-      // ✅ CONFIRM STORAGE (for sanity)
-      console.log("Token saved:", localStorage.getItem("token"));
-
-      // ✅ GO HOME
+      // ✅ Navigate AFTER storage
       navigate("/home");
     } catch (err) {
-      console.error("Login error:", err);
-      setError(
+      const msg =
         err?.response?.data?.message ||
-          err?.response?.data?.error ||
-          "Login failed"
-      );
-    } finally {
-      setLoading(false);
+        err?.response?.data?.error ||
+        err.message ||
+        "Login failed";
+      setError(msg);
     }
   };
 
@@ -81,7 +53,7 @@ export default function Login() {
         justifyContent: "center",
       }}
     >
-      <Paper sx={{ p: 4, minWidth: 360, bgcolor: "#181d28" }}>
+      <Paper sx={{ p: 4, minWidth: 340, bgcolor: "#181d28" }}>
         <Typography variant="h5" fontWeight={700} sx={{ mb: 2 }}>
           Sign In to Aexon
         </Typography>
@@ -112,14 +84,8 @@ export default function Login() {
           sx={{ mb: 2 }}
         />
 
-        <Button
-          fullWidth
-          variant="contained"
-          sx={{ mt: 1 }}
-          disabled={loading}
-          onClick={handleLogin}
-        >
-          {loading ? "Signing in..." : "Login"}
+        <Button fullWidth variant="contained" sx={{ mt: 1 }} onClick={handleLogin}>
+          Login
         </Button>
       </Paper>
     </Box>
