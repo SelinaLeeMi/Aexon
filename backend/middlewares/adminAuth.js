@@ -1,10 +1,9 @@
 /**
  * backend/middlewares/adminAuth.js
  *
- * Protects admin routes using JWT.
- * - Verifies JWT
- * - Loads user from DB
- * - Ensures role === 'admin'
+ * Strict admin JWT protection
+ * - Accepts tokens issued with { userId }
+ * - Verifies admin role
  * - Blocks banned users
  */
 
@@ -36,7 +35,13 @@ module.exports = async function adminAuth(req, res, next) {
       return res.status(401).json({ error: "Invalid token" });
     }
 
-    const userId = payload.id || payload._id || payload.sub;
+    // ✅ CRITICAL FIX — your backend issues userId
+    const userId =
+      payload.userId ||
+      payload.id ||
+      payload._id ||
+      payload.sub;
+
     if (!userId) {
       return res.status(401).json({ error: "Invalid token payload" });
     }
@@ -57,7 +62,7 @@ module.exports = async function adminAuth(req, res, next) {
       return res.status(403).json({ error: "Admin role required" });
     }
 
-    // Attach admin user
+    // Attach admin user (normalized)
     req.user = {
       _id: user._id,
       id: String(user._id),
