@@ -1,14 +1,10 @@
 // frontend/src/api.js
-// Central API client for Aexon
-// FIXED: Always attach Authorization header from localStorage("token")
-
 import axios from "axios";
 
 /* ================================
    BASE CONFIG
 ================================ */
 
-// Backend base (Render)
 const BACKEND_HOST = (
   process.env.REACT_APP_BACKEND_BASE ||
   process.env.REACT_APP_API_BASE ||
@@ -29,7 +25,7 @@ const api = axios.create({
 });
 
 /* ================================
-   TOKEN HANDLING
+   TOKEN
 ================================ */
 
 function getToken() {
@@ -42,39 +38,18 @@ function getToken() {
 
 /* ================================
    REQUEST INTERCEPTOR
-   → THIS IS THE CRITICAL FIX
 ================================ */
 
 api.interceptors.request.use(
   (config) => {
     const token = getToken();
-
     if (token) {
       config.headers = config.headers || {};
       config.headers.Authorization = `Bearer ${token}`;
     }
-
     return config;
   },
   (error) => Promise.reject(error)
-);
-
-/* ================================
-   RESPONSE INTERCEPTOR
-================================ */
-
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    // Do NOT auto-logout unless explicitly unauthorized
-    const status = error?.response?.status;
-
-    if (status === 401 || status === 403) {
-      console.warn("Auth error:", error?.response?.data);
-    }
-
-    return Promise.reject(error);
-  }
 );
 
 /* ================================
@@ -115,6 +90,18 @@ export function getCoins() {
 
 export function getMyTrades() {
   return api.get("/trade/my");
+}
+
+/* ================================
+   NEWS & ANNOUNCEMENTS (RESTORED)
+================================ */
+
+export function getAnnouncements() {
+  return api.get("/announcements");
+}
+
+export function getCryptoNews() {
+  return api.get("/news");
 }
 
 /* ================================
@@ -177,8 +164,7 @@ export function adminAdjustBalance({ userId, coin, delta, reason }) {
 }
 
 /* ================================
-   EXPORT
+   EXPORT DEFAULT
 ================================ */
 
 export default api;
-
