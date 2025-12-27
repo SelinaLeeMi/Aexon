@@ -1,11 +1,17 @@
 /**
  * Wallet Controller - Professional Refactor
  * Features: Filtering, pagination, standardized responses
+ *
+ * Minimal safe enhancement:
+ * - adminSetBalance now uses ledger.postLedgerEntry to ensure ledger is authoritative
+ * - adminSetDepositAddress unchanged
  */
 const User = require("../models/User");
 const DepositRequest = require("../models/DepositRequest");
 const WithdrawRequest = require("../models/WithdrawRequest");
 const Trade = require("../models/Trade");
+
+const { getBalance, postLedgerEntry } = require('../utils/ledger');
 
 // User can only view their wallets
 exports.getWallet = async (req, res) => {
@@ -93,16 +99,62 @@ exports.adminSetBalance = async (req, res) => {
     const { userId, coin, balance } = req.body;
     if (!userId || !coin || typeof balance !== "number" || balance < 0)
       return res.status(400).json({ success: false, error: "Invalid balance data." });
+
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ success: false, error: "User not found" });
-    let wallet = user.wallets.find((w) => w.coin === coin.toUpperCase());
+
+    const uppercaseCoin = coin.toUpperCase();
+
+    // Determine ledger delta (ledger is authoritative)
+    let prevLedgerBalance;
+    try {
+      prevLedgerBalance = await getBalance(userId, uppercaseCoin);
+    } catch (err) {
+      console.error("getBalance error in adminSetBalance:", err && err.message);
+      prevLedgerBalance = 0;
+    }
+    const desiredBalance = Number(balance);
+    const delta = desiredBalance - Number(prevLedgerBalance);
+
+    if (delta === 0) {
+      // Nothing to change at ledger level, but ensure embedded wallet is synced
+      let wallet = user.wallets.find((w) => w.coin === uppercaseCoin);
+      if (!wallet) {
+        user.wallets.push({ coin: uppercaseCoin, balance: desiredBalance, address: "" });
+      } else {
+        wallet.balance = desiredBalance;
+      }
+      await user.save();
+      return res.json({ success: true, msg: "Balance updated" });
+    }
+
+    // post ledger entry (this enforces non-negative new balance)
+    let ledgerResult;
+    try {
+      ledgerResult = await postLedgerEntry(userId, 'adjustment', uppercaseCoin, delta, {
+        subtype: 'admin_set_balance',
+        ref: `admin_set_balance:${userId}`,
+        note: `Admin set balance to ${desiredBalance}`,
+        meta: { performedBy: req.user && req.user._id }
+      });
+    } catch (err) {
+      console.error("postLedgerEntry failed in adminSetBalance:", err && (err.message || err));
+      if (err && /Insufficient balance/i.test(err.message)) {
+        return res.status(400).json({ success: false, error: "Insufficient balance" });
+      }
+      return res.status(500).json({ success: false, error: "Failed to update ledger balance" });
+    }
+
+    // Sync embedded wallet to ledger authoritative balance
+    let wallet = user.wallets.find((w) => w.coin === uppercaseCoin);
     if (!wallet) {
-      user.wallets.push({ coin: coin.toUpperCase(), balance, address: "" });
+      user.wallets.push({ coin: uppercaseCoin, balance: Number(ledgerResult.balance), address: "" });
     } else {
-      wallet.balance = balance;
+      wallet.balance = Number(ledgerResult.balance);
     }
     await user.save();
-    res.json({ success: true, msg: "Balance updated" });
+
+    return res.json({ success: true, msg: "Balance updated" });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }

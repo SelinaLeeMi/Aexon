@@ -6,7 +6,7 @@
  *  - listUsers: now selects safe fields only (avoid leaking hashed passwords or sensitive tokens)
  *  - getUserBalances: new read-only ledger-backed endpoint (uses utils/ledger.getAllBalances)
  *
- * No trading, deposit or ledger write logic changed here.
+ * No trading, deposit or ledger write logic changed here except: admin balance changes now post ledger entries
  */
 const path = require('path');
 const fs = require('fs');
@@ -22,7 +22,7 @@ const Setting = require('../models/Setting');
 const DepositRequest = require("../models/DepositRequest");
 const WithdrawRequest = require("../models/WithdrawRequest");
 
-const { getAllBalances } = require('../utils/ledger');
+const { getAllBalances, postLedgerEntry } = require('../utils/ledger');
 
 async function createAudit(action, actorId, details = {}) {
   try {
@@ -147,20 +147,42 @@ module.exports = {
       if (!user) return res.status(404).json({ error: "User not found" });
 
       const uppercaseCoin = String(coin).toUpperCase();
+      const numericDelta = Number(delta);
+      if (!Number.isFinite(numericDelta)) return res.status(400).json({ error: "Invalid delta" });
+
+      // Create a ledger entry (source-of-truth). This enforces non-negative balances.
+      let ledgerResult;
+      try {
+        ledgerResult = await postLedgerEntry(user._id, 'adjustment', uppercaseCoin, numericDelta, {
+          subtype: 'admin',
+          ref: `admin_adjust_balance:${id}`,
+          note: reason || 'Admin adjustment',
+          meta: { performedBy: req.user && req.user._id }
+        });
+      } catch (err) {
+        // Preserve previous API semantics for invalid ops (insufficient balance, etc.)
+        console.error("postLedgerEntry failed in adjustBalance:", err && (err.message || err));
+        if (err && /Insufficient balance/i.test(err.message)) {
+          return res.status(400).json({ error: "Insufficient balance" });
+        }
+        return res.status(500).json({ error: "Failed to adjust ledger balance" });
+      }
+
+      // Sync embedded user.wallets with ledger authoritative balance
       let found = (user.wallets || []).find(w => w.coin === uppercaseCoin);
       if (!found) {
         user.wallets = user.wallets || [];
-        user.wallets.push({ coin: uppercaseCoin, balance: Number(delta) });
+        user.wallets.push({ coin: uppercaseCoin, balance: Number(ledgerResult.balance) });
       } else {
-        found.balance = Number(found.balance || 0) + Number(delta);
-        if (found.balance < 0) found.balance = 0;
+        found.balance = Number(ledgerResult.balance);
       }
       await user.save();
 
-      await Wallet.create({
+      // Persist a Wallet log (existing behavior) — keep best-effort (non-blocking)
+      Wallet.create({
         user: user._id,
         coin: uppercaseCoin,
-        amount: Number(delta),
+        amount: numericDelta,
         address: '',
         tx: '',
         status: 'approved',
@@ -168,8 +190,9 @@ module.exports = {
         processedAt: new Date()
       }).catch(() => {});
 
-      await createAudit("user:adjust_balance", req.user && req.user._id, { target: id, coin: uppercaseCoin, delta, reason });
+      await createAudit("user:adjust_balance", req.user && req.user._id, { target: id, coin: uppercaseCoin, delta: numericDelta, reason });
 
+      // Return same shape as before (backwards-compatible): user object
       return res.json({ success: true, data: user });
     } catch (e) {
       console.error("adjustBalance error:", e && (e.stack || e.message || e));
@@ -200,26 +223,47 @@ module.exports = {
 
       if (w.status === 'approved') return res.status(400).json({ error: "Already approved" });
 
+      const depositAmount = Number(w.amount || 0);
+      const uppercaseCoin = String(w.coin).toUpperCase();
+
+      // Create ledger deposit entry first (ensures ledger is authoritative)
+      let ledgerResult;
+      try {
+        ledgerResult = await postLedgerEntry(w.user, 'deposit', uppercaseCoin, depositAmount, {
+          subtype: 'admin_deposit',
+          ref: `wallet:${w._id.toString()}`,
+          note: 'Approved deposit by admin',
+          meta: { processedBy: req.user && req.user._id }
+        });
+      } catch (err) {
+        console.error("postLedgerEntry failed in approveWallet:", err && (err.message || err));
+        if (err && /Insufficient balance/i.test(err.message)) {
+          return res.status(400).json({ error: "Insufficient balance" });
+        }
+        return res.status(500).json({ error: "Failed to record deposit in ledger" });
+      }
+
+      // Mark wallet entry approved and save
       w.status = "approved";
       w.processedBy = req.user && req.user._id;
       w.processedAt = new Date();
       await w.save();
 
-      // credit user's embedded wallet
+      // Sync user's embedded wallet to ledger authoritative balance
       const user = await User.findById(w.user);
       if (user) {
-        const uppercaseCoin = String(w.coin).toUpperCase();
         let found = (user.wallets || []).find(x => x.coin === uppercaseCoin);
         if (!found) {
           user.wallets = user.wallets || [];
-          user.wallets.push({ coin: uppercaseCoin, balance: Number(w.amount), address: '' });
+          user.wallets.push({ coin: uppercaseCoin, balance: Number(ledgerResult.balance), address: '' });
         } else {
-          found.balance = Number(found.balance || 0) + Number(w.amount);
+          // Overwrite with ledger authoritative balance
+          found.balance = Number(ledgerResult.balance);
         }
         await user.save();
       }
 
-      await createAudit("wallet:approve", req.user && req.user._id, { walletId: id });
+      await createAudit("wallet:approve", req.user && req.user._id, { walletId: id, ledgerBalance: ledgerResult.balance });
       broadcast({ type: "wallet_update", payload: w });
 
       return res.json({ success: true, data: w });
