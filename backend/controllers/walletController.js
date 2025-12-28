@@ -2,16 +2,19 @@
  * Wallet Controller - Professional Refactor
  * Features: Filtering, pagination, standardized responses
  *
- * Minimal safe enhancement:
- * - adminSetBalance now uses ledger.postLedgerEntry to ensure ledger is authoritative
- * - adminSetDepositAddress unchanged
+ * Enhancements:
+ * - GET /wallet/summary: authoritative ledger-derived summary with prices and precomputed fiat values.
+ * - Uses walletSummaryCache to speed up repeated reads and minimize recomputation.
  */
+
 const User = require("../models/User");
 const DepositRequest = require("../models/DepositRequest");
 const WithdrawRequest = require("../models/WithdrawRequest");
 const Trade = require("../models/Trade");
+const Coin = require("../models/Coin");
 
-const { getBalance, postLedgerEntry } = require('../utils/ledger');
+const { getBalance, getAllBalances, postLedgerEntry } = require('../utils/ledger');
+const walletSummaryCache = require('../utils/walletSummaryCache');
 
 // User can only view their wallets
 exports.getWallet = async (req, res) => {
@@ -22,6 +25,69 @@ exports.getWallet = async (req, res) => {
     return res.json({ success: true, data: user.wallets || [] });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// New: GET /wallet/summary
+// Returns ledger-derived balances, coin prices, fiat per-asset, and totalFiat.
+// Uses a small in-memory cache to speed up repeated loads (short TTL).
+exports.getWalletSummary = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    // Try cached value first
+    const cached = walletSummaryCache.get(userId);
+    if (cached) {
+      return res.json({ success: true, data: cached });
+    }
+
+    // Get authoritative balances from ledger
+    const balances = await getAllBalances(userId); // [{ coin, balance }, ...]
+
+    // Build symbol list
+    const symbols = balances.map(b => String(b.coin).toUpperCase());
+
+    // Fetch coins/prices in bulk
+    let coins = [];
+    if (symbols.length > 0) {
+      coins = await Coin.find({ symbol: { $in: symbols } }).lean();
+    }
+
+    // Map symbol -> price
+    const priceMap = {};
+    coins.forEach(c => {
+      priceMap[String(c.symbol).toUpperCase()] = typeof c.price === 'number' ? c.price : 0;
+    });
+
+    // Compose result rows
+    const rows = balances.map(b => {
+      const coin = String(b.coin).toUpperCase();
+      const balance = Number(b.balance || 0);
+      const price = Number(priceMap[coin] || 0);
+      const fiatValue = Number((balance * price) || 0);
+      return { coin, balance, price, fiatValue };
+    });
+
+    // total fiat
+    const totalFiat = rows.reduce((acc, r) => acc + Number(r.fiatValue || 0), 0);
+
+    const result = {
+      balances: rows,
+      totalFiat: Number(totalFiat),
+      fetchedAt: new Date().toISOString()
+    };
+
+    // Cache the result (short TTL)
+    try {
+      walletSummaryCache.set(userId, result);
+    } catch (err) {
+      // non-fatal if caching fails
+      console.warn("walletSummaryCache.set failed:", err && err.message);
+    }
+
+    return res.json({ success: true, data: result });
+  } catch (error) {
+    console.error("getWalletSummary error:", error && (error.stack || error.message || error));
+    res.status(500).json({ success: false, error: "Failed to get wallet summary" });
   }
 };
 
@@ -94,15 +160,15 @@ exports.listTransactions = async (req, res) => {
 };
 
 // Admin can set/change balances and deposit addresses
+// Note: This function uses ledger.postLedgerEntry (authoritative). After ledger write, we invalidate wallet summary cache.
 exports.adminSetBalance = async (req, res) => {
   try {
     const { userId, coin, balance } = req.body;
     if (!userId || !coin || typeof balance !== "number" || balance < 0)
       return res.status(400).json({ success: false, error: "Invalid balance data." });
-
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ success: false, error: "User not found" });
-
+    let wallet = user.wallets.find((w) => w.coin === coin.toUpperCase());
     const uppercaseCoin = coin.toUpperCase();
 
     // Determine ledger delta (ledger is authoritative)
@@ -118,7 +184,6 @@ exports.adminSetBalance = async (req, res) => {
 
     if (delta === 0) {
       // Nothing to change at ledger level, but ensure embedded wallet is synced
-      let wallet = user.wallets.find((w) => w.coin === uppercaseCoin);
       if (!wallet) {
         user.wallets.push({ coin: uppercaseCoin, balance: desiredBalance, address: "" });
       } else {
@@ -146,13 +211,19 @@ exports.adminSetBalance = async (req, res) => {
     }
 
     // Sync embedded wallet to ledger authoritative balance
-    let wallet = user.wallets.find((w) => w.coin === uppercaseCoin);
     if (!wallet) {
       user.wallets.push({ coin: uppercaseCoin, balance: Number(ledgerResult.balance), address: "" });
     } else {
       wallet.balance = Number(ledgerResult.balance);
     }
     await user.save();
+
+    // Invalidate wallet summary cache for this user
+    try {
+      walletSummaryCache.invalidate(userId);
+    } catch (err) {
+      console.warn("walletSummaryCache.invalidate failed:", err && err.message);
+    }
 
     return res.json({ success: true, msg: "Balance updated" });
   } catch (error) {

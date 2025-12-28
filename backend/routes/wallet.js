@@ -1,12 +1,22 @@
 /**
  * Wallet Routes - Premium Professional Refactor
+ *
+ * Routes:
+ *  - GET /api/wallet           -> getWallet (embedded wallets array)
+ *  - GET /api/wallet/summary   -> getWalletSummary (ledger-derived, price + total)
+ *  - GET /api/wallet/transactions -> transaction history
+ *  - POST /api/wallet/admin/set-balance -> adminSetBalance
+ *  - POST /api/wallet/admin/set-deposit-address -> adminSetDepositAddress
  */
 const router = require("express").Router();
 const { protect, adminOnly } = require("../middlewares/auth");
 const walletController = require("../controllers/walletController");
 
-// User: get own wallet
+// User: get own wallet (embedded)
 router.get("/", protect, walletController.getWallet);
+
+// User: ledger-derived summary with prices
+router.get("/summary", protect, walletController.getWalletSummary);
 
 // User: transaction history with filter and pagination
 router.get("/transactions", protect, walletController.listTransactions);

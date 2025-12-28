@@ -7,6 +7,7 @@
  *  - getUserBalances: new read-only ledger-backed endpoint (uses utils/ledger.getAllBalances)
  *
  * No trading, deposit or ledger write logic changed here except: admin balance changes now post ledger entries
+ * and invalidate wallet summary cache.
  */
 const path = require('path');
 const fs = require('fs');
@@ -23,6 +24,7 @@ const DepositRequest = require("../models/DepositRequest");
 const WithdrawRequest = require("../models/WithdrawRequest");
 
 const { getAllBalances, postLedgerEntry } = require('../utils/ledger');
+const walletSummaryCache = require('../utils/walletSummaryCache');
 
 async function createAudit(action, actorId, details = {}) {
   try {
@@ -192,6 +194,13 @@ module.exports = {
 
       await createAudit("user:adjust_balance", req.user && req.user._id, { target: id, coin: uppercaseCoin, delta: numericDelta, reason });
 
+      // Invalidate wallet summary cache for this user (ensure next summary read is fresh)
+      try {
+        walletSummaryCache.invalidate(user._id);
+      } catch (err) {
+        console.warn("walletSummaryCache.invalidate failed:", err && err.message);
+      }
+
       // Return same shape as before (backwards-compatible): user object
       return res.json({ success: true, data: user });
     } catch (e) {
@@ -264,6 +273,14 @@ module.exports = {
       }
 
       await createAudit("wallet:approve", req.user && req.user._id, { walletId: id, ledgerBalance: ledgerResult.balance });
+
+      // Invalidate wallet summary cache for this user (ensure next summary read is fresh)
+      try {
+        walletSummaryCache.invalidate(w.user);
+      } catch (err) {
+        console.warn("walletSummaryCache.invalidate failed:", err && err.message);
+      }
+
       broadcast({ type: "wallet_update", payload: w });
 
       return res.json({ success: true, data: w });
