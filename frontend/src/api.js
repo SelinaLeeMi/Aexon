@@ -93,7 +93,7 @@ export function getMyTrades() {
 }
 
 /* ================================
-   NEWS & ANNOUNCEMENTS (RESTORED)
+   NEWS & ANNOUNCEMENTS
 ================================ */
 
 export function getAnnouncements() {
@@ -155,12 +155,33 @@ export function adminUnbanUser(userId) {
   return api.post(`/admin/user/${userId}/action`, { action: "unban" });
 }
 
+/**
+ * Note: the backend endpoint for admin balance adjustments is:
+ * POST /api/admin/user/:id/adjust-balance
+ * (not /admin/user/:id/balance). Use this correct path.
+ */
 export function adminAdjustBalance({ userId, coin, delta, reason }) {
-  return api.post(`/admin/user/${userId}/balance`, {
+  return api.post(`/admin/user/${userId}/adjust-balance`, {
     coin,
     delta,
     reason,
   });
+}
+
+/**
+ * Admin set deposit address helper (single coin/network)
+ * Backend route: POST /api/admin/user/:id/deposit-address
+ */
+export function adminSetDepositAddress(userId, coin, network, address) {
+  return api.post(`/admin/user/${userId}/deposit-address`, { coin, network, address });
+}
+
+/**
+ * Admin price override helper
+ * Backend route: POST /api/admin/price_override
+ */
+export function adminPriceOverride(symbol, price, broadcast = true) {
+  return api.post("/admin/price_override", { symbol, price, broadcast });
 }
 
 /* ================================

@@ -1,6 +1,6 @@
 import React from "react";
 import {
-  Table, TableHead, TableRow, TableCell, TableBody, Button, Box, Typography, IconButton, Tooltip
+  Table, TableHead, TableRow, TableCell, TableBody, Button, Box, Typography, IconButton, Tooltip, Stack
 } from "@mui/material";
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import { adminBanUser, adminUnbanUser } from "../api";
@@ -103,25 +103,26 @@ export default function AdminUserTable({ users = [], onEditDepositAddress, onRef
                 ))}
               </TableCell>
               <TableCell>
-                <Button
-                  variant="outlined"
-                  size="small"
-                  color="primary"
-                  aria-label={`Edit deposit addresses for ${u.email}`}
-                  onClick={() => onEditDepositAddress && onEditDepositAddress(u)}
-                  sx={{ mr: 1 }}
-                >
-                  Edit Deposit Addresses
-                </Button>
-                <Button
-                  variant="contained"
-                  size="small"
-                  color={u.isBanned ? "success" : "error"}
-                  aria-label={u.isBanned ? `Unban ${u.email}` : `Ban ${u.email}`}
-                  onClick={() => handleBanUnban(u)}
-                >
-                  {u.isBanned ? "Unban" : "Ban"}
-                </Button>
+                <Stack direction="row" spacing={1}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    color="primary"
+                    aria-label={`Edit deposit addresses for ${u.email}`}
+                    onClick={() => onEditDepositAddress && onEditDepositAddress(u)}
+                  >
+                    Edit Deposit Addresses
+                  </Button>
+                  <Button
+                    variant="contained"
+                    size="small"
+                    color={u.isBanned ? "success" : "error"}
+                    aria-label={u.isBanned ? `Unban ${u.email}` : `Ban ${u.email}`}
+                    onClick={() => handleBanUnban(u)}
+                  >
+                    {u.isBanned ? "Unban" : "Ban"}
+                  </Button>
+                </Stack>
               </TableCell>
             </TableRow>
           ))}
