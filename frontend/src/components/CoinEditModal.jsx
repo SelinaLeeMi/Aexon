@@ -2,48 +2,64 @@ import React, { useState, useEffect } from "react";
 import {
   Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, Box, Alert
 } from "@mui/material";
+import { adminPriceOverride } from "../api";
 
-const supportedNetworks = ["BTC", "ETH", "USDT", "USDC"];
-
+/**
+ * CoinEditModal - used primarily to edit coin price (admin override).
+ * Keeps a familiar UI for coin editing, but when saved it will call the adminPriceOverride
+ * endpoint to update the coin price and optionally broadcast.
+ *
+ * Props:
+ * - open: boolean
+ * - onClose: fn
+ * - coin: { symbol, name, price, icon } (may be undefined for add)
+ * - onSave: fn(updatedCoin) - called after successful save to allow parent to refresh list
+ */
 export default function CoinEditModal({ open, onClose, coin, onSave }) {
   const [symbol, setSymbol] = useState("");
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
   const [iconUrl, setIconUrl] = useState("");
-  const [depositAddress, setDepositAddress] = useState({});
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setSymbol(coin?.symbol || "");
     setName(coin?.name || "");
-    setPrice(coin?.price || "");
-    setIconUrl(coin?.iconUrl || "");
-    setDepositAddress(coin?.depositAddress || {});
+    setPrice(typeof coin?.price === "number" ? String(coin.price) : (coin?.price || ""));
+    setIconUrl(coin?.icon || "");
     setError("");
+    setSaving(false);
   }, [coin, open]);
 
-  const handleDepositAddressChange = (net, value) => {
-    setDepositAddress(addr => ({ ...addr, [net]: value }));
-  };
-
-  const handleSave = () => {
+  const handleSave = async () => {
     setError("");
-    if (!symbol || !name || !price || isNaN(price) || Number(price) <= 0) {
-      setError("Fill all required fields correctly.");
+    if (!symbol || symbol.length === 0) {
+      setError("Symbol is required");
       return;
     }
-    onSave({
-      symbol,
-      name,
-      price: Number(price),
-      iconUrl,
-      depositAddress
-    });
+    if (price === "" || isNaN(Number(price))) {
+      setError("Valid price is required");
+      return;
+    }
+    setSaving(true);
+    try {
+      // Use adminPriceOverride to update price and broadcast
+      await adminPriceOverride(symbol.toUpperCase(), Number(price), true);
+      if (onSave) {
+        onSave({ symbol: symbol.toUpperCase(), name, price: Number(price), icon: iconUrl });
+      }
+      onClose();
+    } catch (e) {
+      setError((e?.response?.data?.error) || e?.message || "Failed to save coin");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
-      <DialogTitle>{coin ? "Edit Coin" : "Add Coin"}</DialogTitle>
+      <DialogTitle>{coin ? `Edit ${coin.symbol}` : "Edit Coin"}</DialogTitle>
       <DialogContent>
         <TextField
           label="Symbol"
@@ -78,21 +94,16 @@ export default function CoinEditModal({ open, onClose, coin, onSave }) {
           sx={{ mb: 2 }}
           fullWidth
         />
-        {supportedNetworks.map(net => (
-          <TextField
-            key={net}
-            label={`Default deposit address for ${net}`}
-            value={depositAddress[net] || ""}
-            onChange={e => handleDepositAddressChange(net, e.target.value)}
-            sx={{ mb: 2 }}
-            fullWidth
-          />
-        ))}
         {error && <Alert severity="error">{error}</Alert>}
+        <Box sx={{ mt: 1, fontSize: 12, color: "text.secondary" }}>
+          Note: Saving will set the coin price via admin override and broadcast to clients.
+        </Box>
       </DialogContent>
       <DialogActions>
-        <Button variant="contained" onClick={handleSave}>Save</Button>
-        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={onClose} disabled={saving}>Cancel</Button>
+        <Button variant="contained" onClick={handleSave} disabled={saving}>
+          {saving ? "Saving..." : "Save"}
+        </Button>
       </DialogActions>
     </Dialog>
   );

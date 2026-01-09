@@ -26,9 +26,8 @@ import {
   InputLabel,
   FormControl,
   Divider,
-  Snackbar,
-  Alert,
   Stack,
+  Alert,
 } from "@mui/material";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import PublishIcon from "@mui/icons-material/Publish";
@@ -38,9 +37,11 @@ import PaymentsIcon from "@mui/icons-material/Payments";
 import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import HistoryIcon from "@mui/icons-material/History";
 import CloseIcon from "@mui/icons-material/Close";
-import api from "../api";
+import api, { adminGetUsers, adminGetWallets, adminGetTrades, getCoins } from "../api";
 import { useNotification } from "../components/NotificationProvider";
 import { useRealtime } from "../context/RealtimeContext";
+import UserDepositAddressEditModal from "../components/UserDepositAddressEditModal";
+import CoinEditModal from "../components/CoinEditModal";
 
 function SectionPaper({ title, icon, children, sx }) {
   return (
@@ -61,7 +62,6 @@ export default function AdminPanel() {
   const notify = useNotification();
   const realtime = useRealtime();
 
-
   const [tab, setTab] = useState(0);
 
   // Overview
@@ -73,6 +73,9 @@ export default function AdminPanel() {
   const [usersLoading, setUsersLoading] = useState(false);
   const [userSearch, setUserSearch] = useState("");
   const [selectedUser, setSelectedUser] = useState(null);
+
+  // Deposit address modal
+  const [depositOpen, setDepositOpen] = useState(false);
 
   // Adjust balance dialog
   const [adjOpen, setAdjOpen] = useState(false);
@@ -95,6 +98,12 @@ export default function AdminPanel() {
   const [priceValue, setPriceValue] = useState("");
   const [broadcastMessage, setBroadcastMessage] = useState("");
   const [broadcastTitle, setBroadcastTitle] = useState("Announcement");
+
+  // Coins list & coin edit modal
+  const [coins, setCoins] = useState([]);
+  const [coinsLoading, setCoinsLoading] = useState(false);
+  const [coinModalOpen, setCoinModalOpen] = useState(false);
+  const [coinToEdit, setCoinToEdit] = useState(null);
 
   // Logs
   const [logs, setLogs] = useState("");
@@ -122,10 +131,11 @@ export default function AdminPanel() {
   const fetchUsers = async (q = "") => {
     setUsersLoading(true);
     try {
-      const r = await api.get("/admin/users", { params: { search: q } });
+      const r = await adminGetUsers(q);
       setUsers(Array.isArray(r.data?.data) ? r.data.data : (Array.isArray(r.data) ? r.data : []));
     } catch (e) {
       notify.showNotification("Failed to fetch users", "error", 4000);
+      setUsers([]);
     } finally {
       setUsersLoading(false);
     }
@@ -134,10 +144,11 @@ export default function AdminPanel() {
   const fetchWallets = async (status = "pending") => {
     setWalletsLoading(true);
     try {
-      const r = await api.get("/admin/wallets", { params: { status } });
+      const r = await adminGetWallets(status);
       setWallets(Array.isArray(r.data?.data) ? r.data.data : (Array.isArray(r.data) ? r.data : []));
     } catch (e) {
       notify.showNotification("Failed to fetch wallet items", "error", 4000);
+      setWallets([]);
     } finally {
       setWalletsLoading(false);
     }
@@ -146,12 +157,26 @@ export default function AdminPanel() {
   const fetchTrades = async (q = "") => {
     setTradesLoading(true);
     try {
-      const r = await api.get("/admin/trades", { params: { search: q } });
+      const r = await adminGetTrades(q);
       setTrades(Array.isArray(r.data?.data) ? r.data.data : (Array.isArray(r.data) ? r.data : []));
     } catch (e) {
       notify.showNotification("Failed to fetch trades", "error", 4000);
+      setTrades([]);
     } finally {
       setTradesLoading(false);
+    }
+  };
+
+  const fetchCoins = async () => {
+    setCoinsLoading(true);
+    try {
+      const r = await getCoins();
+      setCoins(Array.isArray(r.data?.data) ? r.data.data : (Array.isArray(r.data) ? r.data : []));
+    } catch (e) {
+      notify.showNotification("Failed to fetch coins", "error", 4000);
+      setCoins([]);
+    } finally {
+      setCoinsLoading(false);
     }
   };
 
@@ -186,6 +211,7 @@ export default function AdminPanel() {
     fetchWallets(walletFilter);
     fetchTrades();
     fetchSettings();
+    fetchCoins();
     // eslint-disable-next-line
   }, []);
 
@@ -385,6 +411,42 @@ export default function AdminPanel() {
     URL.revokeObjectURL(url);
   }
 
+  // Deposit modal handlers
+  const openDepositModal = (user) => {
+    setSelectedUser(user);
+    setDepositOpen(true);
+  };
+  const closeDepositModal = () => {
+    setDepositOpen(false);
+    setSelectedUser(null);
+  };
+  const handleDepositSave = () => {
+    // refresh users to show saved addresses
+    fetchUsers(userSearch);
+    closeDepositModal();
+  };
+
+  // Coin modal handlers
+  const openCoinModal = (coin) => {
+    setCoinToEdit(coin);
+    setCoinModalOpen(true);
+  };
+  const closeCoinModal = () => {
+    setCoinModalOpen(false);
+    setCoinToEdit(null);
+  };
+  const handleCoinSave = async (updatedCoin) => {
+    // updatedCoin contains symbol and price (adminPriceOverride was called by modal)
+    await fetchCoins();
+    refreshSummary();
+  };
+
+  useEffect(() => {
+    // refresh coins when coin modal closes
+    if (!coinModalOpen) fetchCoins();
+    // eslint-disable-next-line
+  }, [coinModalOpen]);
+
   return (
     <Box sx={{ px: 2, pt: 2, pb: 10, maxWidth: 1200, mx: "auto" }}>
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
@@ -525,9 +587,7 @@ export default function AdminPanel() {
                           </TableCell>
                           <TableCell>
                             <Stack direction="row" spacing={1}>
-                              <Button size="small" variant="outlined" onClick={() => { setSelectedUser(u); }}>
-                                View
-                              </Button>
+                              <Button size="small" variant="outlined" onClick={() => { setSelectedUser(u); }}>View</Button>
                               <Button size="small" variant="contained" onClick={() => doUserAction(u._id || u.id, u.banned ? "unban" : "ban")}>
                                 {u.banned ? "Unban" : "Ban"}
                               </Button>
@@ -535,6 +595,7 @@ export default function AdminPanel() {
                                 {u.role === "admin" ? "Demote" : "Promote"}
                               </Button>
                               <Button size="small" variant="text" onClick={() => openAdjustDialog(u)}>Adjust</Button>
+                              <Button size="small" variant="outlined" onClick={() => openDepositModal(u)}>Deposit Addr</Button>
                             </Stack>
                           </TableCell>
                         </TableRow>
@@ -568,6 +629,13 @@ export default function AdminPanel() {
               <Button variant="contained" onClick={submitAdjustBalance} disabled={busy}>Submit</Button>
             </DialogActions>
           </Dialog>
+
+          <UserDepositAddressEditModal
+            open={depositOpen}
+            onClose={closeDepositModal}
+            user={selectedUser}
+            onSave={handleDepositSave}
+          />
         </Box>
       )}
 
@@ -712,10 +780,45 @@ export default function AdminPanel() {
                 </Stack>
               </Grid>
             </Grid>
-            <Box sx={{ mt: 2 }}>
-              <Typography variant="body2" color="text.secondary">Overriding prices should be used only for testing or emergency maintenance. Ideally your backend stores price overrides and broadcasts to all clients.</Typography>
+
+            <Box sx={{ mt: 3 }}>
+              <Typography variant="subtitle1" sx={{ mb: 1 }}>Manage coins</Typography>
+              {coinsLoading ? <CircularProgress /> : (
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Symbol</TableCell>
+                      <TableCell>Name</TableCell>
+                      <TableCell>Price</TableCell>
+                      <TableCell>Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {coins.map(c => (
+                      <TableRow key={c.symbol}>
+                        <TableCell>{c.symbol}</TableCell>
+                        <TableCell>{c.name}</TableCell>
+                        <TableCell>{typeof c.price === "number" ? c.price : (c.price || 0)}</TableCell>
+                        <TableCell>
+                          <Stack direction="row" spacing={1}>
+                            <Button size="small" onClick={() => openCoinModal(c)}>Edit</Button>
+                            <Button size="small" onClick={() => { setPriceSymbol(c.symbol); setPriceValue(typeof c.price === "number" ? String(c.price) : (c.price || "")); notify.showNotification("Loaded price into quick override", "info"); }}>Load Price</Button>
+                          </Stack>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
             </Box>
           </SectionPaper>
+
+          <CoinEditModal
+            open={coinModalOpen}
+            onClose={closeCoinModal}
+            coin={coinToEdit}
+            onSave={handleCoinSave}
+          />
         </Box>
       )}
 
@@ -781,10 +884,6 @@ export default function AdminPanel() {
           </SectionPaper>
         </Box>
       )}
-
-      <Snackbar open={false} autoHideDuration={3000} onClose={() => {}} anchorOrigin={{ vertical: "bottom", horizontal: "center" }}>
-        <Alert severity="info" action={<IconButton size="small"><CloseIcon fontSize="small" /></IconButton>}>Placeholder</Alert>
-      </Snackbar>
     </Box>
   );
 }
