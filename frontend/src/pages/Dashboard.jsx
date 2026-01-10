@@ -1,237 +1,208 @@
 import React, { useEffect, useState } from "react";
-import { getMe, getWallet, getCoins } from "../api";
-import { useNavigate } from "react-router-dom";
 import {
-  Box, Typography, Paper, Grid, useMediaQuery, TextField, Autocomplete
+  Box,
+  Container,
+  Grid,
+  Paper,
+  Typography,
+  Table,
+  TableHead,
+  TableRow,
+  TableCell,
+  TableBody,
+  Button,
+  CircularProgress,
+  Avatar,
+  Divider,
 } from "@mui/material";
-import Announcements from "../components/Announcements";
-import CryptoNews from "../components/CryptoNews";
-import ChatSupport from "../components/ChatSupport";
+import TopHeader from "../components/TopHeader";
+import PortfolioTotalCard from "../components/PortfolioTotalCard";
+import api from "../api";
+
+/**
+ * Dashboard - professional portfolio-focused trading dashboard
+ *
+ * - Mobile-first, dense, institutional layout
+ * - Dark surface styling applied locally to avoid changing global theme
+ * - Uses existing backend endpoints (no backend edits)
+ * - Keeps only portfolio-related UI: total + holdings/balances
+ * - Removes announcements, chat, favorites, news, demo widgets
+ *
+ * Notes:
+ * - Do not change routing/auth/context/backend
+ * - No console.logs
+ */
+
+function formatCurrency(value, currency = "USD") {
+  try {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 2 }).format(Number(value || 0));
+  } catch {
+    return `${currency} ${Number(value || 0).toFixed(2)}`;
+  }
+}
+
+function formatNumber(value, maxDigits = 6) {
+  const v = Number(value || 0);
+  if (Math.abs(v) >= 1000) return v.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  return v.toLocaleString(undefined, { maximumFractionDigits: maxDigits });
+}
 
 export default function Dashboard() {
-  const [user, setUser] = useState(null);
-  const [wallet, setWallet] = useState([]);
-  const [coins, setCoins] = useState([]);
-  const [searchInput, setSearchInput] = useState("");
-  const [searchOptions, setSearchOptions] = useState([]);
-  const [debugInfo, setDebugInfo] = useState("");
-  const navigate = useNavigate();
-  const isMobile = useMediaQuery("(max-width:600px)");
+  const [summary, setSummary] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) return navigate("/login");
-
-    getMe(token)
-      .then(r => {
-        setUser(r.data.data);
-        localStorage.setItem("user", JSON.stringify(r.data.data));
-      })
-      .catch(() => {
-        localStorage.clear();
-        navigate("/login");
-      });
-
-    getWallet(token)
-      .then(r => {
-        const wallets = Array.isArray(r.data?.data)
-          ? r.data.data
-          : Array.isArray(r.data)
-            ? r.data
-            : Array.isArray(r.data.wallets)
-              ? r.data.wallets
-              : [];
-        setWallet(wallets);
-      })
-      .catch(() => setWallet([]));
-
-    getCoins()
-      .then(r => {
-        if (r.data && Array.isArray(r.data.data)) {
-          setCoins(r.data.data);
-        } else if (Array.isArray(r.data)) {
-          setCoins(r.data);
-        } else {
-          setCoins([]);
-        }
-      })
-      .catch(() => setCoins([]));
-  }, [navigate]);
-
-  useEffect(() => {
-    setSearchOptions([
-      ...(Array.isArray(coins) ? coins : []).map(c => ({ label: `Coin: ${c.symbol} - ${c.name}`, value: `/market/${c.symbol}` })),
-      { label: "Wallet", value: "/wallet" },
-      { label: "Trade", value: "/trade" },
-      { label: "Futures", value: "/futures" },
-      { label: "Profile", value: "/profile" },
-      { label: "Support", value: "/support" },
-      { label: "Settings", value: "/settings" },
-      { label: "Deposit", value: "/wallet?tab=deposit" },
-      { label: "Withdraw", value: "/wallet?tab=withdraw" },
-      ...(user?.role === "admin" ? [{ label: "Admin Panel", value: "/super-0xA35-panel" }] : [])
-    ]);
-  }, [coins, user]);
-
-  const handleSearchSelect = (event, option) => {
-    if (option && option.value) {
-      navigate(option.value);
-      setSearchInput("");
+  const fetchSummary = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const resp = await api.get("/wallet/summary");
+      const data = resp.data?.data || resp.data || null;
+      setSummary(data);
+    } catch (e) {
+      setError("Unable to load portfolio data.");
+      setSummary(null);
+    } finally {
+      setLoading(false);
     }
   };
 
-  // SUPPORT magic code: springthegoat (case-insensitive, ignore spaces/numbers/exclamation)
-  const handleSearchKeyDown = (event) => {
-    if (event.key === "Enter") {
-      const normalized = searchInput.trim().toLowerCase().replace(/[\s0-9!]/g, "");
-      if (normalized === "springthegoat" && user?.role === "admin") {
-        setSearchInput("");
-        navigate("/super-0xA35-panel");
-      }
-    }
+  useEffect(() => {
+    fetchSummary();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const holdings = Array.isArray(summary?.balances) ? summary.balances : [];
+
+  const handleTrade = (coin) => {
+    // Navigate to trade page for the pair (assume USDT base)
+    window.location.href = `/trade?pair=${encodeURIComponent(coin + "USDT")}`;
   };
 
-  const welcomeName =
-    user?.username && !user?.username.startsWith("aexonuser_")
-      ? user.username
-      : "Aexon User";
+  const handleDeposit = (coin) => {
+    window.location.href = `/wallet?coin=${encodeURIComponent(coin)}`;
+  };
 
-  const totalUsdBalance = (() => {
-    if (!wallet || !coins) return 0;
-    let sum = 0;
-    wallet.forEach(w => {
-      const coin = coins.find(c => c.symbol?.toUpperCase() === w.coin?.toUpperCase());
-      const price = coin?.price ?? coin?.current_price ?? 0;
-      if (coin && price) {
-        sum += Number(w.balance || 0) * Number(price);
-      }
-    });
-    return sum;
-  })();
-
-  useEffect(() => {
-    setDebugInfo(
-      "DEBUG INFO:\n" +
-      "User: " + JSON.stringify(user, null, 2) + "\n\n" +
-      "Wallet: " + JSON.stringify(wallet, null, 2) + "\n\n" +
-      "Coins: " + JSON.stringify(coins, null, 2)
-    );
-    if (typeof window !== "undefined") {
-      console.log("USER:", user);
-      console.log("WALLET:", wallet);
-      console.log("COINS:", coins);
-    }
-  }, [user, wallet, coins]);
+  // Local dark surface tokens (kept on page only)
+  const surface = "#0f1724";
+  const pageBg = "#0b1220";
+  const cardBorder = "rgba(255,255,255,0.04)";
+  const muted = "rgba(255,255,255,0.7)";
 
   return (
-    <Box sx={{
-      p: { xs: 1, sm: 3 },
-      pb: 8,
-      mt: isMobile ? 1 : 2,
-      width: "100%",
-      maxWidth: 1200,
-      mx: "auto"
-    }}>
-      {/* Only ONE search bar, at the very top */}
-      <Box sx={{
-        mb: 2,
-        mt: 1,
-        px: isMobile ? 0.5 : 0,
-      }}>
-        <Autocomplete
-          freeSolo
-          disableClearable
-          options={searchOptions}
-          getOptionLabel={option => option.label || ""}
-          value={null}
-          inputValue={searchInput}
-          onInputChange={(_, val) => setSearchInput(val)}
-          onChange={handleSearchSelect}
-          renderInput={params => (
-            <TextField
-              {...params}
-              label="Search coins, features, or actions..."
-              variant="outlined"
-              fullWidth
-              size="small"
+    <Box sx={{ minHeight: "100vh", backgroundColor: pageBg, color: "#E6EEF8" }}>
+      <TopHeader onToggleSidebar={() => {}} onTrade={() => (window.location.href = "/trade")} onWallet={() => (window.location.href = "/wallet")} />
+
+      <Container maxWidth="lg" sx={{ py: { xs: 2, md: 3 } }}>
+        <Grid container spacing={2}>
+          <Grid item xs={12}>
+            <Box sx={{ mb: 0 }}>
+              {/* PortfolioTotalCard uses wallet/summary endpoint internally; keep it as primary summary */}
+              <PortfolioTotalCard
+                onTrade={() => (window.location.href = "/trade")}
+                onDeposit={() => (window.location.href = "/wallet")}
+              />
+            </Box>
+          </Grid>
+
+          <Grid item xs={12}>
+            <Paper
+              elevation={0}
               sx={{
-                bgcolor: "#232c3c",
+                backgroundColor: surface,
+                border: `1px solid ${cardBorder}`,
+                p: { xs: 1, md: 2 },
                 borderRadius: 2,
-                input: { color: "#fff" }
               }}
-              InputProps={{
-                ...params.InputProps,
-                style: { fontSize: isMobile ? 15 : 18 }
-              }}
-              onKeyDown={handleSearchKeyDown}
-            />
-          )}
-        />
-      </Box>
-
-      {/* Welcome and Balance */}
-      <Paper sx={{
-        p: { xs: 2, sm: 3 },
-        mb: 3,
-        borderRadius: 3,
-        background: "linear-gradient(90deg, #20263a 60%, #1a2132 100%)",
-        textAlign: isMobile ? "center" : "left"
-      }}>
-        <Typography variant={isMobile ? "h5" : "h4"} fontWeight={700} mb={1}>
-          Welcome, {welcomeName}
-        </Typography>
-        <Typography variant={isMobile ? "body1" : "h6"} sx={{ mb: 2 }}>
-          Balance: <span style={{ color: "#10B981", fontWeight: 700 }}>{totalUsdBalance.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 2 })}</span>
-        </Typography>
-      </Paper>
-
-      <Paper sx={{ mb: 4, p: { xs: 1, sm: 2 }, borderRadius: 3 }}>
-        <Typography variant={isMobile ? "body1" : "h6"} fontWeight={600} mb={2}>
-          Favorite Coins
-        </Typography>
-        <Grid container spacing={isMobile ? 1 : 2}>
-          {(Array.isArray(coins) ? coins : []).slice(0, 3).map(coin => (
-            <Grid item xs={12} sm={4} key={coin.symbol}>
-              <Box sx={{
-                textAlign: "center",
-                display: "flex",
-                flexDirection: isMobile ? "row" : "column",
-                alignItems: "center",
-                justifyContent: isMobile ? "flex-start" : "center",
-                gap: isMobile ? 1 : 0
-              }}>
-                <img
-                  src={coin.iconUrl || coin.image}
-                  alt={coin.symbol}
-                  loading="lazy"
-                  style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: 8,
-                    objectFit: "contain",
-                    background: "#222"
-                  }}
-                  onError={e => { e.target.onerror = null; e.target.src = "/assets/coins/default.png"; }}
-                />
-                <Box sx={{ textAlign: isMobile ? "left" : "center" }}>
-                  <Typography fontWeight={600} fontSize={isMobile ? 14 : 15}>{coin.name}</Typography>
-                  <Typography fontSize={isMobile ? 13 : 14} color="text.secondary">
-                    {(coin.price ?? coin.current_price)?.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 2 })}
-                  </Typography>
+            >
+              <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
+                <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                  Holdings
+                </Typography>
+                <Box>
+                  <Button size="small" onClick={fetchSummary} sx={{ color: muted, borderColor: cardBorder, mr: 1 }}>
+                    Refresh
+                  </Button>
                 </Box>
               </Box>
-            </Grid>
-          ))}
-        </Grid>
-      </Paper>
+              <Divider sx={{ borderColor: cardBorder, mb: 1 }} />
 
-      <Announcements />
-      <CryptoNews />
-      <ChatSupport />
-      {/* Debug info for devs only */}
-      {/* <Paper sx={{ mt: 3, p: 2, borderRadius: 2, background: "#232c3c" }}>
-        <pre style={{ color: "#ffaa00", fontSize: 13, margin: 0 }}>{debugInfo}</pre>
-      </Paper> */}
+              {loading ? (
+                <Box sx={{ py: 3, display: "flex", alignItems: "center", gap: 2, justifyContent: "center" }}>
+                  <CircularProgress size={20} color="inherit" />
+                  <Typography variant="body2" color="text.secondary">Loading holdings…</Typography>
+                </Box>
+              ) : error ? (
+                <Box sx={{ py: 3 }}>
+                  <Typography variant="body2" color="error.main">{error}</Typography>
+                </Box>
+              ) : !holdings.length ? (
+                <Box sx={{ py: 3 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    No assets in your portfolio.
+                  </Typography>
+                </Box>
+              ) : (
+                <Box sx={{ width: "100%", overflowX: "auto" }}>
+                  <Table size="small" aria-label="dashboard-holdings" sx={{ minWidth: 720 }}>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell sx={{ color: "#E6EEF8" }}>Asset</TableCell>
+                        <TableCell align="right" sx={{ color: "#E6EEF8" }}>Balance</TableCell>
+                        <TableCell align="right" sx={{ color: "#E6EEF8" }}>Price (USD)</TableCell>
+                        <TableCell align="right" sx={{ color: "#E6EEF8" }}>Value (USD)</TableCell>
+                        <TableCell align="right" sx={{ color: "#E6EEF8" }}>Actions</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {holdings.map((h) => (
+                        <TableRow key={h.coin} hover sx={{ borderBottom: `1px solid ${cardBorder}` }}>
+                          <TableCell component="th" scope="row" sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                            <Avatar sx={{ width: 32, height: 32, bgcolor: "transparent", color: "#fff", fontSize: 14 }}>
+                              {h.coin?.slice(0, 1) || "A"}
+                            </Avatar>
+                            <Box>
+                              <Typography variant="body2" sx={{ fontWeight: 700 }}>{h.coin}</Typography>
+                              {h.price != null && (
+                                <Typography variant="caption" sx={{ color: "rgba(255,255,255,0.65)" }}>
+                                  {formatCurrency(h.price, "USD")} / unit
+                                </Typography>
+                              )}
+                            </Box>
+                          </TableCell>
+
+                          <TableCell align="right" sx={{ fontVariantNumeric: "tabular-nums" }}>
+                            <Typography variant="body2">{formatNumber(h.balance, 6)} {h.coin}</Typography>
+                          </TableCell>
+
+                          <TableCell align="right" sx={{ color: "rgba(255,255,255,0.75)", fontVariantNumeric: "tabular-nums" }}>
+                            {formatCurrency(h.price || 0, "USD")}
+                          </TableCell>
+
+                          <TableCell align="right" sx={{ fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
+                            {formatCurrency(h.fiatValue || 0, "USD")}
+                          </TableCell>
+
+                          <TableCell align="right">
+                            <Box sx={{ display: "flex", gap: 1, justifyContent: "flex-end" }}>
+                              <Button size="small" variant="outlined" onClick={() => handleTrade(h.coin)} sx={{ color: "#E6EEF8", borderColor: cardBorder }}>
+                                Trade
+                              </Button>
+                              <Button size="small" variant="contained" onClick={() => handleDeposit(h.coin)}>
+                                Withdraw
+                              </Button>
+                            </Box>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </Box>
+              )}
+            </Paper>
+          </Grid>
+        </Grid>
+      </Container>
     </Box>
   );
 }
