@@ -1,113 +1,120 @@
+// Design theme tokens and MUI theme configuration
 import { createTheme } from "@mui/material/styles";
 
-const darkBg = "#111418";
-const darkPaper = "#181d28";
-const darkDivider = "#232c3c";
+/**
+ * Design tokens and theme for the application.
+ * Mobile-first typography and spacing are applied.
+ *
+ * Usage:
+ * import Theme from './theme';
+ * <ThemeProvider theme={Theme}>...</ThemeProvider>
+ */
 
-const theme = createTheme({
+const baseTypography = {
+  fontFamily: [
+    "Inter",
+    "-apple-system",
+    "BlinkMacSystemFont",
+    '"Segoe UI"',
+    "Roboto",
+    '"Helvetica Neue"',
+    "Arial",
+    "sans-serif",
+  ].join(","),
+  h1: {
+    fontSize: "1.5rem", // 24px mobile
+    fontWeight: 700,
+  },
+  h2: {
+    fontSize: "1.125rem", // 18px
+    fontWeight: 700,
+  },
+  h3: {
+    fontSize: "1rem", // 16px
+    fontWeight: 600,
+  },
+  body1: {
+    fontSize: "0.9375rem", // 15px
+    fontWeight: 400,
+  },
+  body2: {
+    fontSize: "0.875rem", // 14px
+    fontWeight: 400,
+  },
+  caption: {
+    fontSize: "0.75rem", // 12px
+  },
+  // Use tabular numbers for monetary values where applied in styles
+};
+
+const Theme = createTheme({
   palette: {
-    mode: "dark",
-    primary: { main: "#1890ff" },
-    secondary: { main: "#10B981" },
-    background: { default: darkBg, paper: darkPaper },
-    text: { primary: "#fff", secondary: "#9ca3af" },
-    divider: darkDivider,
-    error: { main: "#F43F5E" }
+    mode: "light",
+    primary: {
+      main: "#2563EB", // blue 600
+      contrastText: "#ffffff",
+    },
+    success: {
+      main: "#16A34A",
+      contrastText: "#ffffff",
+    },
+    error: {
+      main: "#DC2626",
+      contrastText: "#ffffff",
+    },
+    background: {
+      default: "#F6F7F9",
+      paper: "#FFFFFF",
+    },
+    text: {
+      primary: "#0F1724",
+      secondary: "#6B7280",
+    },
+    divider: "rgba(15, 23, 36, 0.06)",
   },
+  shape: {
+    borderRadius: 8, // --radius-md
+  },
+  spacing: 8, // base spacing unit
   typography: {
-    fontFamily: [
-      "Inter",
-      "IBM Plex Sans",
-      "Roboto",
-      "Arial",
-      "sans-serif"
-    ].join(","),
-    fontWeightLight: 400,
-    fontWeightRegular: 500,
-    fontWeightBold: 700,
-    h4: { fontWeight: 700 },
-    h5: { fontWeight: 600 }
+    ...baseTypography,
   },
-  shape: { borderRadius: 16 },
   components: {
-    MuiPaper: {
+    MuiCard: {
       styleOverrides: {
         root: {
-          backgroundColor: darkPaper,
-          boxShadow: "0 4px 32px #0003",
-          border: "none !important",
-        }
-      }
-    },
-    MuiTable: {
-      styleOverrides: {
-        root: {
-          backgroundColor: "transparent",
-          borderCollapse: "collapse",
-        }
-      }
-    },
-    MuiTableCell: {
-      styleOverrides: {
-        root: {
-          borderBottom: `1px solid ${darkDivider}`,
+          borderRadius: 8,
+          boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
+          border: "1px solid rgba(15,23,36,0.04)",
         },
-        head: {
-          borderBottom: `1px solid ${darkDivider}`,
-        }
-      }
+      },
     },
-    MuiDivider: {
+    MuiButton: {
       styleOverrides: {
         root: {
-          borderColor: darkDivider
-        }
-      }
+          textTransform: "none",
+          borderRadius: 8,
+        },
+        containedPrimary: {
+          boxShadow: "none",
+        },
+      },
     },
     MuiDialog: {
       styleOverrides: {
         paper: {
-          backgroundColor: darkPaper,
-          border: "none !important",
-          boxShadow: "0 8px 32px #000a"
-        }
-      }
+          borderRadius: 10,
+        },
+      },
     },
-    MuiInputBase: {
+    MuiTableCell: {
       styleOverrides: {
         root: {
-          backgroundColor: "transparent",
-        }
-      }
+          borderBottom: "1px solid rgba(15,23,36,0.04)",
+        },
+      },
     },
-    MuiOutlinedInput: {
-      styleOverrides: {
-        root: {
-          backgroundColor: "transparent",
-          borderRadius: 12,
-          "& fieldset": {
-            borderColor: darkDivider,
-          },
-          "&:hover fieldset": {
-            borderColor: "#1890ff",
-          },
-          "&.Mui-focused fieldset": {
-            borderColor: "#1890ff",
-            borderWidth: 2,
-          }
-        }
-      }
-    },
-    MuiTableContainer: {
-      styleOverrides: {
-        root: {
-          background: "none",
-          boxShadow: "none",
-          border: "none"
-        }
-      }
-    }
-  }
+  },
 });
 
-export default theme;
+export default Theme;
