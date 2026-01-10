@@ -1,40 +1,31 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Box,
   Container,
   Grid,
   Paper,
   Typography,
-  Table,
-  TableHead,
-  TableRow,
-  TableCell,
-  TableBody,
   Button,
   CircularProgress,
-  Avatar,
   Divider,
-  useMediaQuery,
   useTheme,
+  useMediaQuery,
 } from "@mui/material";
 import TopHeader from "../components/TopHeader";
-import PortfolioTotalCard from "../components/PortfolioTotalCard";
 import api from "../api";
 
 /**
- * Dashboard (improved)
+ * Dashboard - Professional trading-product layout (refactor)
  *
- * - Professional, dense, mobile-first trading dashboard.
- * - Dark institutional styling kept locally.
- * - Uses GET /api/wallet/summary for holdings (no backend changes).
- * - No announcements/chat/news/demo widgets.
+ * - Mobile-first, dense, institutional dark style
+ * - Portfolio summary (value + 24h change + ONE CTA: Trade)
+ * - Market Movers section with Top Gainers and Top Losers (24h)
+ * - Removes holdings table duplication; DOES NOT replicate Wallet functionality
+ * - No announcements, chat, favorites, news, or demo widgets
  *
- * Layout improvements:
- * - Max container width (centered)
- * - Reduced vertical spacing and a tight grid
- * - Portfolio card hierarchy tightened (title, value, actions alignment)
- * - Holdings: proper table on desktop, stacked compact cards on mobile
- * - Professional empty-state placed inside table body
+ * Notes:
+ * - Uses existing backend endpoints only (GET /wallet/summary and GET /coin)
+ * - No routing/auth/backend changes
  */
 
 function formatCurrency(value, currency = "USD") {
@@ -45,10 +36,16 @@ function formatCurrency(value, currency = "USD") {
   }
 }
 
-function formatNumber(value, maxDigits = 6) {
+function formatNumber(value, digits = 6) {
   const v = Number(value || 0);
   if (Math.abs(v) >= 1000) return v.toLocaleString(undefined, { maximumFractionDigits: 2 });
-  return v.toLocaleString(undefined, { maximumFractionDigits: maxDigits });
+  return v.toLocaleString(undefined, { maximumFractionDigits: digits });
+}
+
+function percentString(value) {
+  const v = Number(value || 0);
+  const sign = v > 0 ? "+" : "";
+  return `${sign}${v.toFixed(2)}%`;
 }
 
 export default function Dashboard() {
@@ -56,248 +53,278 @@ export default function Dashboard() {
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
 
   const [summary, setSummary] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [coins, setCoins] = useState([]);
+  const [loadingSummary, setLoadingSummary] = useState(true);
+  const [loadingCoins, setLoadingCoins] = useState(true);
+  const [errorSummary, setErrorSummary] = useState(null);
+  const [errorCoins, setErrorCoins] = useState(null);
 
+  // Fetch wallet summary (authoritative totals)
   const fetchSummary = async () => {
-    setLoading(true);
-    setError(null);
+    setLoadingSummary(true);
+    setErrorSummary(null);
     try {
-      const resp = await api.get("/wallet/summary");
-      const data = resp.data?.data || resp.data || null;
+      const res = await api.get("/wallet/summary");
+      const data = res.data?.data || res.data || null;
       setSummary(data);
     } catch (e) {
-      setError("Unable to load portfolio data.");
+      setErrorSummary("Failed to load portfolio summary");
       setSummary(null);
     } finally {
-      setLoading(false);
+      setLoadingSummary(false);
+    }
+  };
+
+  // Fetch coins (prices + previousPrice)
+  const fetchCoins = async () => {
+    setLoadingCoins(true);
+    setErrorCoins(null);
+    try {
+      const res = await api.get("/coin");
+      // backend may return array under data or data.data
+      const list = Array.isArray(res.data?.data) ? res.data.data : (Array.isArray(res.data) ? res.data : []);
+      setCoins(list);
+    } catch (e) {
+      setErrorCoins("Failed to load market data");
+      setCoins([]);
+    } finally {
+      setLoadingCoins(false);
     }
   };
 
   useEffect(() => {
     fetchSummary();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    fetchCoins();
   }, []);
 
-  const holdings = Array.isArray(summary?.balances) ? summary.balances : [];
+  // Compute total previous fiat using coins.previousPrice if available
+  const totals = useMemo(() => {
+    const totalNow = Number(summary?.totalFiat || 0);
+    let prevTotal = null;
 
-  const handleTrade = (coin) => {
-    window.location.href = `/trade?pair=${encodeURIComponent(coin + "USDT")}`;
+    try {
+      if (summary?.balances && Array.isArray(summary.balances) && coins.length > 0) {
+        const priceMap = new Map();
+        for (const c of coins) {
+          if (c && c.symbol) priceMap.set(String(c.symbol).toUpperCase(), c);
+        }
+        let accumPrev = 0;
+        let havePrev = false;
+        for (const b of summary.balances) {
+          const coin = String(b.coin).toUpperCase();
+          const balance = Number(b.balance || 0);
+          const coinInfo = priceMap.get(coin);
+          if (coinInfo && typeof coinInfo.previousPrice === "number" && coinInfo.previousPrice > 0) {
+            accumPrev += balance * Number(coinInfo.previousPrice);
+            havePrev = true;
+          } else if (coinInfo && typeof coinInfo.price === "number") {
+            // fallback: use current price as previous if no previousPrice (neutral change)
+            accumPrev += balance * Number(coinInfo.price);
+          } else {
+            // unknown, skip
+          }
+        }
+        if (havePrev) prevTotal = accumPrev;
+      }
+    } catch {
+      prevTotal = null;
+    }
+
+    const absoluteChange = prevTotal != null ? (totalNow - prevTotal) : null;
+    const percentChange = (prevTotal && prevTotal !== 0) ? (absoluteChange / prevTotal) * 100 : null;
+
+    return {
+      totalNow,
+      prevTotal,
+      absoluteChange,
+      percentChange,
+    };
+  }, [summary, coins]);
+
+  // Market movers: compute percent change per coin from coins list
+  const marketMovers = useMemo(() => {
+    if (!coins || coins.length === 0) return { gainers: [], losers: [] };
+
+    const rows = coins
+      .filter(c => c && typeof c.price === "number")
+      .map(c => {
+        const symbol = String(c.symbol || "").toUpperCase();
+        const price = Number(c.price || 0);
+        const prev = (typeof c.previousPrice === "number" && c.previousPrice > 0) ? Number(c.previousPrice) : null;
+        const change = prev ? ((price - prev) / prev) * 100 : 0;
+        return { symbol, price, change };
+      });
+
+    const sorted = rows.sort((a, b) => (b.change - a.change));
+    const gainers = sorted.slice(0, 6);
+    const losers = sorted.slice(-6).reverse();
+    return { gainers, losers };
+  }, [coins]);
+
+  const tradePrimary = () => {
+    window.location.href = "/trade";
   };
 
-  const handleWithdraw = (coin) => {
-    window.location.href = `/wallet?coin=${encodeURIComponent(coin)}`;
-  };
-
-  // local visual tokens for dark/institutional look
+  // Visual tokens for dark style
+  const containerMax = 1200;
   const surface = "#0f1724";
   const pageBg = "#0b1220";
-  const cardBorder = "rgba(255,255,255,0.06)";
-  const captionColor = "rgba(255,255,255,0.72)";
+  const border = "rgba(255,255,255,0.06)";
+  const muted = "rgba(255,255,255,0.72)";
 
   return (
     <Box sx={{ minHeight: "100vh", backgroundColor: pageBg, color: "#E6EEF8" }}>
       <TopHeader onToggleSidebar={() => {}} onTrade={() => (window.location.href = "/trade")} onWallet={() => (window.location.href = "/wallet")} />
 
-      <Container
-        maxWidth={false}
-        sx={{
-          display: "flex",
-          justifyContent: "center",
-          px: { xs: 2, md: 3 },
-          py: { xs: 2, md: 3 },
-        }}
-      >
-        <Box sx={{ width: "100%", maxWidth: 1300 }}>
+      <Box sx={{ display: "flex", justifyContent: "center", py: { xs: 2, md: 3 }, px: { xs: 2, md: 0 } }}>
+        <Container maxWidth={false} sx={{ width: "100%", maxWidth: `${containerMax}px` }}>
           <Grid container spacing={2}>
-            {/* Portfolio total - tight card */}
+            {/* Portfolio summary (compact) */}
             <Grid item xs={12}>
-              <Paper
-                elevation={0}
-                sx={{
-                  backgroundColor: surface,
-                  border: `1px solid ${cardBorder}`,
-                  p: { xs: 1, md: 2 },
-                  borderRadius: 2,
-                }}
-              >
-                <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, alignItems: { sm: "center" }, gap: 2 }}>
-                  <Box sx={{ flex: 1 }}>
-                    {/* Title + value stacked compactly */}
-                    <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                      Portfolio Value
-                    </Typography>
-                    <PortfolioTotalCard
-                      onTrade={() => (window.location.href = "/trade")}
-                      onDeposit={() => (window.location.href = "/wallet")}
-                    />
-                  </Box>
+              <Paper elevation={0} sx={{ backgroundColor: surface, border: `1px solid ${border}`, p: { xs: 1, md: 2 }, borderRadius: 2 }}>
+                <Grid container alignItems="center" spacing={2}>
+                  <Grid item xs={12} sm={8}>
+                    <Box>
+                      <Typography variant="subtitle2" sx={{ color: muted, fontWeight: 700 }}>
+                        Portfolio Value
+                      </Typography>
+                      <Box sx={{ display: "flex", alignItems: "baseline", gap: 2, mt: 0.5, flexWrap: "wrap" }}>
+                        {loadingSummary ? (
+                          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                            <CircularProgress size={18} color="inherit" />
+                            <Typography variant="h6" sx={{ fontWeight: 700 }}>Loading…</Typography>
+                          </Box>
+                        ) : (
+                          <Typography variant="h4" sx={{ fontWeight: 800 }}>
+                            {formatCurrency(totals.totalNow, "USD")}
+                          </Typography>
+                        )}
 
-                  {/* Condense quick actions to the side on larger screens */}
-                  <Box sx={{ display: "flex", gap: 1, alignItems: "center", mt: { xs: 1, sm: 0 } }}>
-                    <Button variant="contained" color="primary" onClick={() => (window.location.href = "/trade")}>
+                        {/* 24h change */}
+                        {!loadingSummary && totals.percentChange != null ? (
+                          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                            <Typography
+                              variant="body2"
+                              sx={{
+                                color: totals.percentChange >= 0 ? "#16A34A" : "#DC2626",
+                                fontWeight: 700,
+                                fontVariantNumeric: "tabular-nums",
+                              }}
+                            >
+                              {totals.percentChange >= 0 ? "+" : ""}
+                              {totals.percentChange.toFixed(2)}%
+                            </Typography>
+                            <Typography variant="caption" sx={{ color: muted }}>
+                              24h
+                            </Typography>
+                          </Box>
+                        ) : (
+                          <Typography variant="caption" sx={{ color: muted }}>
+                            24h change unavailable
+                          </Typography>
+                        )}
+                      </Box>
+
+                      <Typography variant="caption" sx={{ color: "rgba(255,255,255,0.6)" }}>
+                        Updated: {summary?.fetchedAt ? new Date(summary.fetchedAt).toLocaleString() : "—"}
+                      </Typography>
+                    </Box>
+                  </Grid>
+
+                  <Grid item xs={12} sm={4} sx={{ textAlign: { xs: "left", sm: "right" } }}>
+                    <Button variant="contained" color="primary" onClick={tradePrimary} sx={{ px: 3 }}>
                       Trade
                     </Button>
-                    <Button variant="outlined" onClick={() => (window.location.href = "/wallet")}>
-                      Wallet
-                    </Button>
-                  </Box>
-                </Box>
+                  </Grid>
+                </Grid>
               </Paper>
             </Grid>
 
-            {/* Holdings */}
+            {/* Market Movers */}
             <Grid item xs={12}>
-              <Paper
-                elevation={0}
-                sx={{
-                  backgroundColor: surface,
-                  border: `1px solid ${cardBorder}`,
-                  p: { xs: 1, md: 2 },
-                  borderRadius: 2,
-                }}
-              >
-                <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
-                  <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                    Holdings
-                  </Typography>
-                  <Box>
-                    <Button size="small" onClick={fetchSummary} sx={{ color: captionColor, borderColor: cardBorder }}>
-                      Refresh
-                    </Button>
-                  </Box>
-                </Box>
-
-                <Divider sx={{ borderColor: cardBorder, mb: 1 }} />
-
-                {loading ? (
-                  <Box sx={{ py: 3, display: "flex", alignItems: "center", gap: 2, justifyContent: "center" }}>
-                    <CircularProgress size={20} color="inherit" />
-                    <Typography variant="body2" color="text.secondary">
-                      Loading holdings…
-                    </Typography>
-                  </Box>
-                ) : error ? (
-                  <Box sx={{ py: 3 }}>
-                    <Typography variant="body2" color="error.main">{error}</Typography>
-                  </Box>
-                ) : holdings.length === 0 ? (
-                  <Table size="small" sx={{ minWidth: 320 }}>
-                    <TableHead>
-                      <TableRow>
-                        <TableCell sx={{ color: "#E6EEF8" }}>Asset</TableCell>
-                        <TableCell align="right" sx={{ color: "#E6EEF8" }}>Balance</TableCell>
-                        <TableCell align="right" sx={{ color: "#E6EEF8" }}>Price (USD)</TableCell>
-                        <TableCell align="right" sx={{ color: "#E6EEF8" }}>Value (USD)</TableCell>
-                        <TableCell align="right" sx={{ color: "#E6EEF8" }}>Actions</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      <TableRow>
-                        <TableCell colSpan={5} sx={{ py: 6 }}>
-                          <Box sx={{ textAlign: "center" }}>
-                            <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
-                              No assets in your portfolio
-                            </Typography>
-                            <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.7)", mb: 2 }}>
-                              Your portfolio will appear here once you deposit funds or execute trades.
-                            </Typography>
-                            <Box sx={{ display: "flex", gap: 1, justifyContent: "center" }}>
-                              <Button variant="contained" onClick={() => (window.location.href = "/wallet")}>Deposit Funds</Button>
-                              <Button variant="outlined" onClick={() => (window.location.href = "/trade")}>Explore Markets</Button>
-                            </Box>
-                          </Box>
-                        </TableCell>
-                      </TableRow>
-                    </TableBody>
-                  </Table>
-                ) : (
-                  <>
-                    {/* Desktop table, mobile stacked cards */}
-                    {isMobile ? (
+              <Grid container spacing={2}>
+                <Grid item xs={12} md={6}>
+                  <Paper elevation={0} sx={{ backgroundColor: surface, border: `1px solid ${border}`, p: { xs: 1, md: 2 }, borderRadius: 2 }}>
+                    <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>Top Gainers (24h)</Typography>
+                    <Divider sx={{ borderColor: border, mb: 1 }} />
+                    {loadingCoins ? (
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 2, py: 2 }}>
+                        <CircularProgress size={18} color="inherit" />
+                        <Typography variant="body2" sx={{ color: muted }}>Loading market data…</Typography>
+                      </Box>
+                    ) : (marketMovers.gainers && marketMovers.gainers.length > 0) ? (
                       <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                        {holdings.map((h) => (
-                          <Paper key={h.coin} elevation={0} sx={{ backgroundColor: "#0b1624", border: `1px solid ${cardBorder}`, p: 1.25, borderRadius: 1.5 }}>
-                            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 1 }}>
-                              <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
-                                <Avatar sx={{ width: 36, height: 36, bgcolor: "transparent", color: "#fff", fontSize: 14 }}>{h.coin?.slice(0, 1) || "A"}</Avatar>
-                                <Box>
-                                  <Typography variant="body2" sx={{ fontWeight: 700 }}>{h.coin}</Typography>
-                                  <Typography variant="caption" sx={{ color: "rgba(255,255,255,0.65)" }}>{formatCurrency(h.price || 0, "USD")} / unit</Typography>
-                                </Box>
+                        {marketMovers.gainers.map(m => (
+                          <Box key={m.symbol} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", py: 0.75 }}>
+                            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                              <Box sx={{
+                                width: 32, height: 32, borderRadius: 1.5, backgroundColor: "rgba(255,255,255,0.02)",
+                                display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700
+                              }}>
+                                {m.symbol.slice(0,1)}
                               </Box>
-
-                              <Box sx={{ textAlign: "right" }}>
-                                <Typography variant="body2" sx={{ fontWeight: 700 }}>{formatCurrency(h.fiatValue || 0, "USD")}</Typography>
-                                <Typography variant="caption" sx={{ color: "rgba(255,255,255,0.65)" }}>{formatNumber(h.balance, 6)} {h.coin}</Typography>
+                              <Box>
+                                <Typography variant="body2" sx={{ fontWeight: 700 }}>{m.symbol}</Typography>
+                                <Typography variant="caption" sx={{ color: muted }}>{formatCurrency(m.price, "USD")}</Typography>
                               </Box>
                             </Box>
-
-                            <Box sx={{ display: "flex", gap: 1, justifyContent: "flex-end", mt: 1 }}>
-                              <Button size="small" variant="outlined" onClick={() => handleTrade(h.coin)} sx={{ color: "#E6EEF8", borderColor: cardBorder }}>Trade</Button>
-                              <Button size="small" variant="contained" onClick={() => handleWithdraw(h.coin)}>Withdraw</Button>
-                            </Box>
-                          </Paper>
+                            <Typography variant="body2" sx={{ color: "#16A34A", fontWeight: 700 }}>{percentString(m.change)}</Typography>
+                          </Box>
                         ))}
                       </Box>
                     ) : (
-                      <Box sx={{ width: "100%", overflowX: "auto" }}>
-                        <Table size="small" aria-label="holdings-table" sx={{ minWidth: 720 }}>
-                          <TableHead>
-                            <TableRow>
-                              <TableCell sx={{ color: "#E6EEF8" }}>Asset</TableCell>
-                              <TableCell align="right" sx={{ color: "#E6EEF8" }}>Balance</TableCell>
-                              <TableCell align="right" sx={{ color: "#E6EEF8" }}>Price (USD)</TableCell>
-                              <TableCell align="right" sx={{ color: "#E6EEF8" }}>Value (USD)</TableCell>
-                              <TableCell align="right" sx={{ color: "#E6EEF8" }}>Actions</TableCell>
-                            </TableRow>
-                          </TableHead>
-                          <TableBody>
-                            {holdings.map((h) => (
-                              <TableRow key={h.coin} hover sx={{ borderBottom: `1px solid ${cardBorder}` }}>
-                                <TableCell component="th" scope="row" sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                                  <Avatar sx={{ width: 32, height: 32, bgcolor: "transparent", color: "#fff", fontSize: 14 }}>{h.coin?.slice(0, 1) || "A"}</Avatar>
-                                  <Box>
-                                    <Typography variant="body2" sx={{ fontWeight: 700 }}>{h.coin}</Typography>
-                                    <Typography variant="caption" sx={{ color: "rgba(255,255,255,0.65)" }}>{formatCurrency(h.price || 0, "USD")} / unit</Typography>
-                                  </Box>
-                                </TableCell>
-
-                                <TableCell align="right" sx={{ fontVariantNumeric: "tabular-nums" }}>
-                                  <Typography variant="body2">{formatNumber(h.balance, 6)} {h.coin}</Typography>
-                                </TableCell>
-
-                                <TableCell align="right" sx={{ color: "rgba(255,255,255,0.75)", fontVariantNumeric: "tabular-nums" }}>
-                                  {formatCurrency(h.price || 0, "USD")}
-                                </TableCell>
-
-                                <TableCell align="right" sx={{ fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
-                                  {formatCurrency(h.fiatValue || 0, "USD")}
-                                </TableCell>
-
-                                <TableCell align="right">
-                                  <Box sx={{ display: "flex", gap: 1, justifyContent: "flex-end" }}>
-                                    <Button size="small" variant="outlined" onClick={() => handleTrade(h.coin)} sx={{ color: "#E6EEF8", borderColor: cardBorder }}>
-                                      Trade
-                                    </Button>
-                                    <Button size="small" variant="contained" onClick={() => handleWithdraw(h.coin)}>
-                                      Withdraw
-                                    </Button>
-                                  </Box>
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
+                      <Box sx={{ py: 2 }}>
+                        <Typography variant="body2" sx={{ color: muted }}>
+                          No market mover data available.
+                        </Typography>
                       </Box>
                     )}
-                  </>
-                )}
-              </Paper>
+                  </Paper>
+                </Grid>
+
+                <Grid item xs={12} md={6}>
+                  <Paper elevation={0} sx={{ backgroundColor: surface, border: `1px solid ${border}`, p: { xs: 1, md: 2 }, borderRadius: 2 }}>
+                    <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>Top Losers (24h)</Typography>
+                    <Divider sx={{ borderColor: border, mb: 1 }} />
+                    {loadingCoins ? (
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 2, py: 2 }}>
+                        <CircularProgress size={18} color="inherit" />
+                        <Typography variant="body2" sx={{ color: muted }}>Loading market data…</Typography>
+                      </Box>
+                    ) : (marketMovers.losers && marketMovers.losers.length > 0) ? (
+                      <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                        {marketMovers.losers.map(m => (
+                          <Box key={m.symbol} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", py: 0.75 }}>
+                            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                              <Box sx={{
+                                width: 32, height: 32, borderRadius: 1.5, backgroundColor: "rgba(255,255,255,0.02)",
+                                display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700
+                              }}>
+                                {m.symbol.slice(0,1)}
+                              </Box>
+                              <Box>
+                                <Typography variant="body2" sx={{ fontWeight: 700 }}>{m.symbol}</Typography>
+                                <Typography variant="caption" sx={{ color: muted }}>{formatCurrency(m.price, "USD")}</Typography>
+                              </Box>
+                            </Box>
+                            <Typography variant="body2" sx={{ color: "#DC2626", fontWeight: 700 }}>{percentString(m.change)}</Typography>
+                          </Box>
+                        ))}
+                      </Box>
+                    ) : (
+                      <Box sx={{ py: 2 }}>
+                        <Typography variant="body2" sx={{ color: muted }}>
+                          No market mover data available.
+                        </Typography>
+                      </Box>
+                    )}
+                  </Paper>
+                </Grid>
+              </Grid>
             </Grid>
           </Grid>
-        </Box>
-      </Container>
+        </Container>
+      </Box>
     </Box>
   );
 }
