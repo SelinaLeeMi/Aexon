@@ -24,6 +24,7 @@ import ForgotPassword from "./pages/ForgotPassword";
 import Landing from "./pages/LandingPage";
 import Dashboard from "./pages/Dashboard";
 import BottomNav from "./components/BottomNav";
+import TopHeader from "./components/TopHeader";
 import { Box, Drawer, List, ListItem, ListItemIcon, ListItemText, IconButton, Avatar, Divider, Typography, GlobalStyles } from "@mui/material";
 import HomeIcon from "@mui/icons-material/Home";
 import ShowChartIcon from "@mui/icons-material/ShowChart";
@@ -33,7 +34,6 @@ import PersonIcon from "@mui/icons-material/Person";
 import SettingsIcon from "@mui/icons-material/Settings";
 import SupportAgentIcon from "@mui/icons-material/SupportAgent";
 import LogoutIcon from "@mui/icons-material/Logout";
-import MenuIcon from "@mui/icons-material/Menu";
 import CloseIcon from "@mui/icons-material/Close";
 import { styled, ThemeProvider, createTheme } from "@mui/material/styles";
 import { NotificationProvider } from "./components/NotificationProvider";
@@ -153,24 +153,6 @@ const theme = createTheme({
   }
 });
 
-const HamburgerButton = styled(IconButton)(({ theme }) => ({
-  position: "fixed",
-  top: 18,
-  right: 18,
-  zIndex: 1400,
-  background: theme.palette.background.paper,
-  borderRadius: 14,
-  boxShadow: theme.shadows[3],
-  width: 48,
-  height: 48,
-  [theme.breakpoints.down("sm")]: {
-    top: 8,
-    right: 8,
-    width: 40,
-    height: 40,
-  },
-}));
-
 function AppDrawer({ open, onClose, user }) {
   const navigate = useNavigate();
   const menu = [
@@ -247,6 +229,7 @@ function AppDrawer({ open, onClose, user }) {
 
 function AppContent() {
   const location = useLocation();
+  const navigate = useNavigate();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   let userRaw = localStorage.getItem("user");
@@ -260,22 +243,24 @@ function AppContent() {
 
   const ADMIN_ROUTE_PATH = "/super-0xA35-panel";
 
-  // Hide ALL nav/drawer on landing page!
   const hideNavRoutes = [
-    "/",           // <-- hiding for landing page!
+    "/",           // landing
     "/login",
     "/register",
     "/forgot-password",
     ADMIN_ROUTE_PATH,
   ];
 
-  const showHamburger =
-    !hideNavRoutes.includes(location.pathname) && !drawerOpen;
+  const hideGlobalNav = hideNavRoutes.includes(location.pathname);
 
-  // --- Redirect logic: if logged in and on "/", show dashboard ---
+  // Redirect logic: if logged in and on "/", show dashboard
   if (token && location.pathname === "/") {
     return <Navigate to="/home" replace />;
   }
+
+  // Header height compensation (prevent page content from being obscured)
+  // Keep this minimal: use the header's minHeight (56px) + small gap on desktop.
+  const headerHeight = hideGlobalNav ? 0 : 64; // px
 
   return (
     <Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
@@ -304,40 +289,46 @@ function AppContent() {
           color: "#fff !important",
         },
       }} />
-      {showHamburger && (
-        <HamburgerButton onClick={() => setDrawerOpen(true)}>
-          <MenuIcon fontSize="large" />
-        </HamburgerButton>
-      )}
-      {/* Only show drawer if not on landing */}
-      {!hideNavRoutes.includes(location.pathname) && (
-        <AppDrawer
-          open={drawerOpen}
-          onClose={() => setDrawerOpen(false)}
-          user={user}
+
+      {/* Global TopHeader (render once) */}
+      {!hideGlobalNav && (
+        <TopHeader
+          onToggleSidebar={() => setDrawerOpen(true)}
+          onTrade={() => navigate("/trade")}
+          onWallet={() => navigate("/wallet")}
         />
       )}
-      <Routes>
-        {/* If not logged in, "/" shows Landing. If logged in, "/" redirects to /home */}
-        <Route path="/" element={token ? <Navigate to="/home" replace /> : <Landing />} />
-        <Route path="/home" element={<Dashboard />} />
-        <Route path="/market" element={<Market />} />
-        <Route path="/market/:coinId" element={<CoinDetail />} />
-        <Route path="/coin/:coinId" element={<CoinDetailPage />} />
-        <Route path="/wallet" element={<Wallet />} />
-        <Route path="/trade" element={<Trade />} />
-        <Route path="/futures" element={<Futures />} />
-        <Route path="/profile" element={<Profile />} />
-        <Route path="/support" element={<Support />} />
-        <Route path="/settings" element={<Settings />} />
-        <Route element={<AdminRoute />}>
-          <Route path={ADMIN_ROUTE_PATH} element={<AdminPanel />} />
-        </Route>
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-        <Route path="/forgot-password" element={<ForgotPassword />} />
-      </Routes>
-      {!hideNavRoutes.includes(location.pathname) && <BottomNav />}
+
+      {/* Global drawer (controlled by header) */}
+      {!hideGlobalNav && (
+        <AppDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} user={user} />
+      )}
+
+      {/* Main content wrapper with top padding to compensate for the global header */}
+      <Box sx={{ pt: `${headerHeight}px` }}>
+        <Routes>
+          <Route path="/" element={token ? <Navigate to="/home" replace /> : <Landing />} />
+          <Route path="/home" element={<Dashboard />} />
+          <Route path="/market" element={<Market />} />
+          <Route path="/market/:coinId" element={<CoinDetail />} />
+          <Route path="/coin/:coinId" element={<CoinDetailPage />} />
+          <Route path="/wallet" element={<Wallet />} />
+          <Route path="/trade" element={<Trade />} />
+          <Route path="/futures" element={<Futures />} />
+          <Route path="/profile" element={<Profile />} />
+          <Route path="/support" element={<Support />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route element={<AdminRoute />}>
+            <Route path={ADMIN_ROUTE_PATH} element={<AdminPanel />} />
+          </Route>
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+        </Routes>
+      </Box>
+
+      {/* Global BottomNav (render once) */}
+      {!hideGlobalNav && <BottomNav />}
     </Box>
   );
 }

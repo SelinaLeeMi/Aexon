@@ -11,21 +11,14 @@ import {
   useTheme,
   useMediaQuery,
 } from "@mui/material";
-import TopHeader from "../components/TopHeader";
 import api from "../api";
 
 /**
- * Dashboard - Professional trading-product layout (refactor)
+ * Dashboard - Professional trading-product layout
  *
- * - Mobile-first, dense, institutional dark style
- * - Portfolio summary (value + 24h change + ONE CTA: Trade)
- * - Market Movers section with Top Gainers and Top Losers (24h)
- * - Removes holdings table duplication; DOES NOT replicate Wallet functionality
- * - No announcements, chat, favorites, news, or demo widgets
- *
- * Notes:
- * - Uses existing backend endpoints only (GET /wallet/summary and GET /coin)
- * - No routing/auth/backend changes
+ * - The global TopHeader is rendered only in App.jsx (AppContent).
+ * - This page no longer renders any header. It focuses on portfolio summary and market movers.
+ * - Mobile-first, dense, institutional dark style.
  */
 
 function formatCurrency(value, currency = "USD") {
@@ -34,12 +27,6 @@ function formatCurrency(value, currency = "USD") {
   } catch {
     return `${currency} ${Number(value || 0).toFixed(2)}`;
   }
-}
-
-function formatNumber(value, digits = 6) {
-  const v = Number(value || 0);
-  if (Math.abs(v) >= 1000) return v.toLocaleString(undefined, { maximumFractionDigits: 2 });
-  return v.toLocaleString(undefined, { maximumFractionDigits: digits });
 }
 
 function percentString(value) {
@@ -59,7 +46,6 @@ export default function Dashboard() {
   const [errorSummary, setErrorSummary] = useState(null);
   const [errorCoins, setErrorCoins] = useState(null);
 
-  // Fetch wallet summary (authoritative totals)
   const fetchSummary = async () => {
     setLoadingSummary(true);
     setErrorSummary(null);
@@ -75,13 +61,11 @@ export default function Dashboard() {
     }
   };
 
-  // Fetch coins (prices + previousPrice)
   const fetchCoins = async () => {
     setLoadingCoins(true);
     setErrorCoins(null);
     try {
       const res = await api.get("/coin");
-      // backend may return array under data or data.data
       const list = Array.isArray(res.data?.data) ? res.data.data : (Array.isArray(res.data) ? res.data : []);
       setCoins(list);
     } catch (e) {
@@ -97,11 +81,9 @@ export default function Dashboard() {
     fetchCoins();
   }, []);
 
-  // Compute total previous fiat using coins.previousPrice if available
   const totals = useMemo(() => {
     const totalNow = Number(summary?.totalFiat || 0);
     let prevTotal = null;
-
     try {
       if (summary?.balances && Array.isArray(summary.balances) && coins.length > 0) {
         const priceMap = new Map();
@@ -118,10 +100,7 @@ export default function Dashboard() {
             accumPrev += balance * Number(coinInfo.previousPrice);
             havePrev = true;
           } else if (coinInfo && typeof coinInfo.price === "number") {
-            // fallback: use current price as previous if no previousPrice (neutral change)
             accumPrev += balance * Number(coinInfo.price);
-          } else {
-            // unknown, skip
           }
         }
         if (havePrev) prevTotal = accumPrev;
@@ -129,22 +108,13 @@ export default function Dashboard() {
     } catch {
       prevTotal = null;
     }
-
     const absoluteChange = prevTotal != null ? (totalNow - prevTotal) : null;
     const percentChange = (prevTotal && prevTotal !== 0) ? (absoluteChange / prevTotal) * 100 : null;
-
-    return {
-      totalNow,
-      prevTotal,
-      absoluteChange,
-      percentChange,
-    };
+    return { totalNow, prevTotal, absoluteChange, percentChange };
   }, [summary, coins]);
 
-  // Market movers: compute percent change per coin from coins list
   const marketMovers = useMemo(() => {
     if (!coins || coins.length === 0) return { gainers: [], losers: [] };
-
     const rows = coins
       .filter(c => c && typeof c.price === "number")
       .map(c => {
@@ -154,7 +124,6 @@ export default function Dashboard() {
         const change = prev ? ((price - prev) / prev) * 100 : 0;
         return { symbol, price, change };
       });
-
     const sorted = rows.sort((a, b) => (b.change - a.change));
     const gainers = sorted.slice(0, 6);
     const losers = sorted.slice(-6).reverse();
@@ -165,166 +134,126 @@ export default function Dashboard() {
     window.location.href = "/trade";
   };
 
-  // Visual tokens for dark style
-  const containerMax = 1200;
   const surface = "#0f1724";
   const pageBg = "#0b1220";
   const border = "rgba(255,255,255,0.06)";
   const muted = "rgba(255,255,255,0.72)";
 
   return (
-    <Box sx={{ minHeight: "100vh", backgroundColor: pageBg, color: "#E6EEF8" }}>
-      <TopHeader onToggleSidebar={() => {}} onTrade={() => (window.location.href = "/trade")} onWallet={() => (window.location.href = "/wallet")} />
-
-      <Box sx={{ display: "flex", justifyContent: "center", py: { xs: 2, md: 3 }, px: { xs: 2, md: 0 } }}>
-        <Container maxWidth={false} sx={{ width: "100%", maxWidth: `${containerMax}px` }}>
-          <Grid container spacing={2}>
-            {/* Portfolio summary (compact) */}
-            <Grid item xs={12}>
-              <Paper elevation={0} sx={{ backgroundColor: surface, border: `1px solid ${border}`, p: { xs: 1, md: 2 }, borderRadius: 2 }}>
-                <Grid container alignItems="center" spacing={2}>
-                  <Grid item xs={12} sm={8}>
-                    <Box>
-                      <Typography variant="subtitle2" sx={{ color: muted, fontWeight: 700 }}>
-                        Portfolio Value
-                      </Typography>
-                      <Box sx={{ display: "flex", alignItems: "baseline", gap: 2, mt: 0.5, flexWrap: "wrap" }}>
-                        {loadingSummary ? (
-                          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                            <CircularProgress size={18} color="inherit" />
-                            <Typography variant="h6" sx={{ fontWeight: 700 }}>Loading…</Typography>
-                          </Box>
-                        ) : (
-                          <Typography variant="h4" sx={{ fontWeight: 800 }}>
-                            {formatCurrency(totals.totalNow, "USD")}
-                          </Typography>
-                        )}
-
-                        {/* 24h change */}
-                        {!loadingSummary && totals.percentChange != null ? (
-                          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                            <Typography
-                              variant="body2"
-                              sx={{
-                                color: totals.percentChange >= 0 ? "#16A34A" : "#DC2626",
-                                fontWeight: 700,
-                                fontVariantNumeric: "tabular-nums",
-                              }}
-                            >
-                              {totals.percentChange >= 0 ? "+" : ""}
-                              {totals.percentChange.toFixed(2)}%
-                            </Typography>
-                            <Typography variant="caption" sx={{ color: muted }}>
-                              24h
-                            </Typography>
-                          </Box>
-                        ) : (
-                          <Typography variant="caption" sx={{ color: muted }}>
-                            24h change unavailable
-                          </Typography>
-                        )}
+    <Box sx={{ minHeight: "100vh", backgroundColor: pageBg, color: "#E6EEF8", py: { xs: 2, md: 3 } }}>
+      <Container maxWidth="lg" sx={{ width: "100%", maxWidth: 1200 }}>
+        <Grid container spacing={2}>
+          <Grid item xs={12}>
+            <Paper elevation={0} sx={{ backgroundColor: surface, border: `1px solid ${border}`, p: { xs: 1, md: 2 }, borderRadius: 2 }}>
+              <Grid container alignItems="center" spacing={2}>
+                <Grid item xs={12} sm={8}>
+                  <Typography variant="subtitle2" sx={{ color: muted, fontWeight: 700 }}>Portfolio Value</Typography>
+                  <Box sx={{ display: "flex", alignItems: "baseline", gap: 2, mt: 0.5, flexWrap: "wrap" }}>
+                    {loadingSummary ? (
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                        <CircularProgress size={18} color="inherit" />
+                        <Typography variant="h6" sx={{ fontWeight: 700 }}>Loading…</Typography>
                       </Box>
+                    ) : (
+                      <Typography variant="h4" sx={{ fontWeight: 800 }}>{formatCurrency(totals.totalNow, "USD")}</Typography>
+                    )}
 
-                      <Typography variant="caption" sx={{ color: "rgba(255,255,255,0.6)" }}>
-                        Updated: {summary?.fetchedAt ? new Date(summary.fetchedAt).toLocaleString() : "—"}
-                      </Typography>
+                    {!loadingSummary && totals.percentChange != null ? (
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                        <Typography variant="body2" sx={{ color: totals.percentChange >= 0 ? "#16A34A" : "#DC2626", fontWeight: 700 }}>
+                          {totals.percentChange >= 0 ? "+" : ""}{totals.percentChange.toFixed(2)}%
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: muted }}>24h</Typography>
+                      </Box>
+                    ) : (
+                      <Typography variant="caption" sx={{ color: muted }}>24h change unavailable</Typography>
+                    )}
+                  </Box>
+                  <Typography variant="caption" sx={{ color: "rgba(255,255,255,0.6)" }}>
+                    Updated: {summary?.fetchedAt ? new Date(summary.fetchedAt).toLocaleString() : "—"}
+                  </Typography>
+                </Grid>
+
+                <Grid item xs={12} sm={4} sx={{ textAlign: { xs: "left", sm: "right" } }}>
+                  <Button variant="contained" color="primary" onClick={tradePrimary} sx={{ px: 3 }}>Trade</Button>
+                </Grid>
+              </Grid>
+            </Paper>
+          </Grid>
+
+          <Grid item xs={12}>
+            <Grid container spacing={2}>
+              <Grid item xs={12} md={6}>
+                <Paper elevation={0} sx={{ backgroundColor: surface, border: `1px solid ${border}`, p: { xs: 1, md: 2 }, borderRadius: 2 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>Top Gainers (24h)</Typography>
+                  <Divider sx={{ borderColor: border, mb: 1 }} />
+                  {loadingCoins ? (
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 2, py: 2 }}>
+                      <CircularProgress size={18} color="inherit" />
+                      <Typography variant="body2" sx={{ color: muted }}>Loading market data…</Typography>
                     </Box>
-                  </Grid>
-
-                  <Grid item xs={12} sm={4} sx={{ textAlign: { xs: "left", sm: "right" } }}>
-                    <Button variant="contained" color="primary" onClick={tradePrimary} sx={{ px: 3 }}>
-                      Trade
-                    </Button>
-                  </Grid>
-                </Grid>
-              </Paper>
-            </Grid>
-
-            {/* Market Movers */}
-            <Grid item xs={12}>
-              <Grid container spacing={2}>
-                <Grid item xs={12} md={6}>
-                  <Paper elevation={0} sx={{ backgroundColor: surface, border: `1px solid ${border}`, p: { xs: 1, md: 2 }, borderRadius: 2 }}>
-                    <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>Top Gainers (24h)</Typography>
-                    <Divider sx={{ borderColor: border, mb: 1 }} />
-                    {loadingCoins ? (
-                      <Box sx={{ display: "flex", alignItems: "center", gap: 2, py: 2 }}>
-                        <CircularProgress size={18} color="inherit" />
-                        <Typography variant="body2" sx={{ color: muted }}>Loading market data…</Typography>
-                      </Box>
-                    ) : (marketMovers.gainers && marketMovers.gainers.length > 0) ? (
-                      <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                        {marketMovers.gainers.map(m => (
-                          <Box key={m.symbol} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", py: 0.75 }}>
-                            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                              <Box sx={{
-                                width: 32, height: 32, borderRadius: 1.5, backgroundColor: "rgba(255,255,255,0.02)",
-                                display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700
-                              }}>
-                                {m.symbol.slice(0,1)}
-                              </Box>
-                              <Box>
-                                <Typography variant="body2" sx={{ fontWeight: 700 }}>{m.symbol}</Typography>
-                                <Typography variant="caption" sx={{ color: muted }}>{formatCurrency(m.price, "USD")}</Typography>
-                              </Box>
+                  ) : (marketMovers.gainers && marketMovers.gainers.length > 0) ? (
+                    <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                      {marketMovers.gainers.map(m => (
+                        <Box key={m.symbol} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", py: 0.75 }}>
+                          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                            <Box sx={{ width: 32, height: 32, borderRadius: 1.5, backgroundColor: "rgba(255,255,255,0.02)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>
+                              {m.symbol.slice(0,1)}
                             </Box>
-                            <Typography variant="body2" sx={{ color: "#16A34A", fontWeight: 700 }}>{percentString(m.change)}</Typography>
-                          </Box>
-                        ))}
-                      </Box>
-                    ) : (
-                      <Box sx={{ py: 2 }}>
-                        <Typography variant="body2" sx={{ color: muted }}>
-                          No market mover data available.
-                        </Typography>
-                      </Box>
-                    )}
-                  </Paper>
-                </Grid>
-
-                <Grid item xs={12} md={6}>
-                  <Paper elevation={0} sx={{ backgroundColor: surface, border: `1px solid ${border}`, p: { xs: 1, md: 2 }, borderRadius: 2 }}>
-                    <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>Top Losers (24h)</Typography>
-                    <Divider sx={{ borderColor: border, mb: 1 }} />
-                    {loadingCoins ? (
-                      <Box sx={{ display: "flex", alignItems: "center", gap: 2, py: 2 }}>
-                        <CircularProgress size={18} color="inherit" />
-                        <Typography variant="body2" sx={{ color: muted }}>Loading market data…</Typography>
-                      </Box>
-                    ) : (marketMovers.losers && marketMovers.losers.length > 0) ? (
-                      <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                        {marketMovers.losers.map(m => (
-                          <Box key={m.symbol} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", py: 0.75 }}>
-                            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                              <Box sx={{
-                                width: 32, height: 32, borderRadius: 1.5, backgroundColor: "rgba(255,255,255,0.02)",
-                                display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700
-                              }}>
-                                {m.symbol.slice(0,1)}
-                              </Box>
-                              <Box>
-                                <Typography variant="body2" sx={{ fontWeight: 700 }}>{m.symbol}</Typography>
-                                <Typography variant="caption" sx={{ color: muted }}>{formatCurrency(m.price, "USD")}</Typography>
-                              </Box>
+                            <Box>
+                              <Typography variant="body2" sx={{ fontWeight: 700 }}>{m.symbol}</Typography>
+                              <Typography variant="caption" sx={{ color: muted }}>{formatCurrency(m.price, "USD")}</Typography>
                             </Box>
-                            <Typography variant="body2" sx={{ color: "#DC2626", fontWeight: 700 }}>{percentString(m.change)}</Typography>
                           </Box>
-                        ))}
-                      </Box>
-                    ) : (
-                      <Box sx={{ py: 2 }}>
-                        <Typography variant="body2" sx={{ color: muted }}>
-                          No market mover data available.
-                        </Typography>
-                      </Box>
-                    )}
-                  </Paper>
-                </Grid>
+                          <Typography variant="body2" sx={{ color: "#16A34A", fontWeight: 700 }}>{percentString(m.change)}</Typography>
+                        </Box>
+                      ))}
+                    </Box>
+                  ) : (
+                    <Box sx={{ py: 2 }}>
+                      <Typography variant="body2" sx={{ color: muted }}>No market mover data available.</Typography>
+                    </Box>
+                  )}
+                </Paper>
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <Paper elevation={0} sx={{ backgroundColor: surface, border: `1px solid ${border}`, p: { xs: 1, md: 2 }, borderRadius: 2 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>Top Losers (24h)</Typography>
+                  <Divider sx={{ borderColor: border, mb: 1 }} />
+                  {loadingCoins ? (
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 2, py: 2 }}>
+                      <CircularProgress size={18} color="inherit" />
+                      <Typography variant="body2" sx={{ color: muted }}>Loading market data…</Typography>
+                    </Box>
+                  ) : (marketMovers.losers && marketMovers.losers.length > 0) ? (
+                    <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                      {marketMovers.losers.map(m => (
+                        <Box key={m.symbol} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", py: 0.75 }}>
+                          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                            <Box sx={{ width: 32, height: 32, borderRadius: 1.5, backgroundColor: "rgba(255,255,255,0.02)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>
+                              {m.symbol.slice(0,1)}
+                            </Box>
+                            <Box>
+                              <Typography variant="body2" sx={{ fontWeight: 700 }}>{m.symbol}</Typography>
+                              <Typography variant="caption" sx={{ color: muted }}>{formatCurrency(m.price, "USD")}</Typography>
+                            </Box>
+                          </Box>
+                          <Typography variant="body2" sx={{ color: "#DC2626", fontWeight: 700 }}>{percentString(m.change)}</Typography>
+                        </Box>
+                      ))}
+                    </Box>
+                  ) : (
+                    <Box sx={{ py: 2 }}>
+                      <Typography variant="body2" sx={{ color: muted }}>No market mover data available.</Typography>
+                    </Box>
+                  )}
+                </Paper>
               </Grid>
             </Grid>
           </Grid>
-        </Container>
-      </Box>
+        </Grid>
+      </Container>
     </Box>
   );
 }

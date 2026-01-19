@@ -19,9 +19,8 @@ import {
   InputLabel,
   FormControl,
   useMediaQuery,
+  Container,
 } from "@mui/material";
-import BottomNav from "../components/BottomNav";
-import Header from "../components/Header";
 
 const depositAddresses = {
   BTC: {
@@ -70,7 +69,8 @@ export default function Wallet() {
         ? r.data.wallets
         : [];
       setWallet(wallets);
-    });
+    }).catch(() => setWallet([]));
+
     getCoins().then(r => {
       if (r.data && Array.isArray(r.data.data)) {
         setCoins(r.data.data);
@@ -82,7 +82,6 @@ export default function Wallet() {
     }).catch(() => setCoins([]));
   }, []);
 
-  // Real-time USD calculation
   const totalUsdBalance = (() => {
     if (!wallet || !coins) return 0;
     let sum = 0;
@@ -99,22 +98,15 @@ export default function Wallet() {
   const handleDepositOpen = () => setDepositOpen(true);
   const handleDepositClose = () => setDepositOpen(false);
 
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      console.log("WALLET:", wallet);
-      console.log("COINS:", coins);
-    }
-  }, [wallet, coins]);
-
   return (
-    <Box sx={{ px: { xs: 1, md: 2 }, pt: 2, pb: 10, width: "100%", maxWidth: 900, mx: "auto" }}>
-      <Header center mini={isMobile} />
+    <Container maxWidth="md" sx={{ px: { xs: 1, md: 2 }, pt: 2, pb: 10 }}>
       <Typography variant={isMobile ? "h5" : "h4"} fontWeight={700} mb={3}>
         Wallet
       </Typography>
-      <Paper sx={{ p: 2, mb: 2, borderRadius: 3 }}>
+
+      <Paper sx={{ p: 2, mb: 2, borderRadius: 2 }}>
         <Typography variant="h6" fontWeight={600}>Total Balance</Typography>
-        <Typography variant="h4" fontWeight={700} color="#10B981">
+        <Typography variant="h4" fontWeight={700} color="#10B981" sx={{ mt: 1 }}>
           ${totalUsdBalance.toLocaleString(undefined, { maximumFractionDigits: 8 })}
         </Typography>
         <Box sx={{ mt: 2, display: "flex", gap: 2, flexWrap: "wrap" }}>
@@ -122,9 +114,10 @@ export default function Wallet() {
           <Button variant="outlined">Withdraw</Button>
         </Box>
       </Paper>
-      <Paper sx={{ p: 2, borderRadius: 3 }}>
+
+      <Paper sx={{ p: 2, borderRadius: 2 }}>
         <Typography variant="h6" fontWeight={600} mb={2}>Assets</Typography>
-        <Table>
+        <Table size="small">
           <TableHead>
             <TableRow>
               <TableCell>Coin</TableCell>
@@ -150,7 +143,7 @@ export default function Wallet() {
           </TableBody>
         </Table>
       </Paper>
-      {/* Deposit Modal */}
+
       <Dialog open={depositOpen} onClose={handleDepositClose} maxWidth="xs" fullWidth>
         <DialogTitle>Deposit Crypto</DialogTitle>
         <DialogContent>
@@ -193,7 +186,6 @@ export default function Wallet() {
           <Button onClick={handleDepositClose}>Close</Button>
         </DialogActions>
       </Dialog>
-      <BottomNav />
-    </Box>
+    </Container>
   );
 }
