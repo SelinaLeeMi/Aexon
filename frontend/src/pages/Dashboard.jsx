@@ -12,13 +12,13 @@ import {
   useMediaQuery,
 } from "@mui/material";
 import api from "../api";
+import { cardSx } from "../shared/cardStyles";
 
 /**
- * Dashboard - Professional trading-product layout
+ * Dashboard - Professional trading-product layout (visual-only changes)
  *
- * - The global TopHeader is rendered only in App.jsx (AppContent).
- * - This page no longer renders any header. It focuses on portfolio summary and market movers.
- * - Mobile-first, dense, institutional dark style.
+ * - Mobile-first, clean card-based structure using shared card styles and theme tokens.
+ * - No behavior changes.
  */
 
 function formatCurrency(value, currency = "USD") {
@@ -134,17 +134,19 @@ export default function Dashboard() {
     window.location.href = "/trade";
   };
 
-  const surface = "#0f1724";
-  const pageBg = "#0b1220";
-  const border = "rgba(255,255,255,0.06)";
-  const muted = "rgba(255,255,255,0.72)";
+  // theme tokens
+  const muted = theme.palette.text.secondary;
+  const divider = theme.palette.divider;
+  const successColor = theme.palette.success.main;
+  const errorColor = theme.palette.error.main;
+  const primary = theme.palette.primary.main;
 
   return (
-    <Box sx={{ minHeight: "100vh", backgroundColor: pageBg, color: "#E6EEF8", py: { xs: 2, md: 3 } }}>
+    <Box sx={{ minHeight: "100vh", backgroundColor: theme.palette.background.default, color: theme.palette.text.primary, py: { xs: 2, md: 3 } }}>
       <Container maxWidth="lg" sx={{ width: "100%", maxWidth: 1200 }}>
         <Grid container spacing={2}>
           <Grid item xs={12}>
-            <Paper elevation={0} sx={{ backgroundColor: surface, border: `1px solid ${border}`, p: { xs: 1, md: 2 }, borderRadius: 2 }}>
+            <Paper elevation={0} sx={cardSx(theme)}>
               <Grid container alignItems="center" spacing={2}>
                 <Grid item xs={12} sm={8}>
                   <Typography variant="subtitle2" sx={{ color: muted, fontWeight: 700 }}>Portfolio Value</Typography>
@@ -160,7 +162,7 @@ export default function Dashboard() {
 
                     {!loadingSummary && totals.percentChange != null ? (
                       <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                        <Typography variant="body2" sx={{ color: totals.percentChange >= 0 ? "#16A34A" : "#DC2626", fontWeight: 700 }}>
+                        <Typography variant="body2" sx={{ color: totals.percentChange >= 0 ? successColor : errorColor, fontWeight: 700 }}>
                           {totals.percentChange >= 0 ? "+" : ""}{totals.percentChange.toFixed(2)}%
                         </Typography>
                         <Typography variant="caption" sx={{ color: muted }}>24h</Typography>
@@ -169,13 +171,15 @@ export default function Dashboard() {
                       <Typography variant="caption" sx={{ color: muted }}>24h change unavailable</Typography>
                     )}
                   </Box>
-                  <Typography variant="caption" sx={{ color: "rgba(255,255,255,0.6)" }}>
+                  <Typography variant="caption" sx={{ color: theme.palette.text.secondary }}>
                     Updated: {summary?.fetchedAt ? new Date(summary.fetchedAt).toLocaleString() : "—"}
                   </Typography>
                 </Grid>
 
                 <Grid item xs={12} sm={4} sx={{ textAlign: { xs: "left", sm: "right" } }}>
-                  <Button variant="contained" color="primary" onClick={tradePrimary} sx={{ px: 3 }}>Trade</Button>
+                  <Button variant="contained" color="primary" onClick={tradePrimary} sx={{ px: 3 }}>
+                    Trade
+                  </Button>
                 </Grid>
               </Grid>
             </Paper>
@@ -184,9 +188,9 @@ export default function Dashboard() {
           <Grid item xs={12}>
             <Grid container spacing={2}>
               <Grid item xs={12} md={6}>
-                <Paper elevation={0} sx={{ backgroundColor: surface, border: `1px solid ${border}`, p: { xs: 1, md: 2 }, borderRadius: 2 }}>
+                <Paper elevation={0} sx={cardSx(theme)}>
                   <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>Top Gainers (24h)</Typography>
-                  <Divider sx={{ borderColor: border, mb: 1 }} />
+                  <Divider sx={{ borderColor: divider, mb: 1 }} />
                   {loadingCoins ? (
                     <Box sx={{ display: "flex", alignItems: "center", gap: 2, py: 2 }}>
                       <CircularProgress size={18} color="inherit" />
@@ -197,7 +201,7 @@ export default function Dashboard() {
                       {marketMovers.gainers.map(m => (
                         <Box key={m.symbol} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", py: 0.75 }}>
                           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                            <Box sx={{ width: 32, height: 32, borderRadius: 1.5, backgroundColor: "rgba(255,255,255,0.02)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>
+                            <Box sx={{ width: 36, height: 36, borderRadius: 2, backgroundColor: "rgba(37,99,235,0.06)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>
                               {m.symbol.slice(0,1)}
                             </Box>
                             <Box>
@@ -205,7 +209,7 @@ export default function Dashboard() {
                               <Typography variant="caption" sx={{ color: muted }}>{formatCurrency(m.price, "USD")}</Typography>
                             </Box>
                           </Box>
-                          <Typography variant="body2" sx={{ color: "#16A34A", fontWeight: 700 }}>{percentString(m.change)}</Typography>
+                          <Typography variant="body2" sx={{ color: successColor, fontWeight: 700 }}>{percentString(m.change)}</Typography>
                         </Box>
                       ))}
                     </Box>
@@ -218,9 +222,9 @@ export default function Dashboard() {
               </Grid>
 
               <Grid item xs={12} md={6}>
-                <Paper elevation={0} sx={{ backgroundColor: surface, border: `1px solid ${border}`, p: { xs: 1, md: 2 }, borderRadius: 2 }}>
+                <Paper elevation={0} sx={cardSx(theme)}>
                   <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>Top Losers (24h)</Typography>
-                  <Divider sx={{ borderColor: border, mb: 1 }} />
+                  <Divider sx={{ borderColor: divider, mb: 1 }} />
                   {loadingCoins ? (
                     <Box sx={{ display: "flex", alignItems: "center", gap: 2, py: 2 }}>
                       <CircularProgress size={18} color="inherit" />
@@ -231,7 +235,7 @@ export default function Dashboard() {
                       {marketMovers.losers.map(m => (
                         <Box key={m.symbol} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", py: 0.75 }}>
                           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                            <Box sx={{ width: 32, height: 32, borderRadius: 1.5, backgroundColor: "rgba(255,255,255,0.02)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>
+                            <Box sx={{ width: 36, height: 36, borderRadius: 2, backgroundColor: "rgba(37,99,235,0.06)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>
                               {m.symbol.slice(0,1)}
                             </Box>
                             <Box>
@@ -239,7 +243,7 @@ export default function Dashboard() {
                               <Typography variant="caption" sx={{ color: muted }}>{formatCurrency(m.price, "USD")}</Typography>
                             </Box>
                           </Box>
-                          <Typography variant="body2" sx={{ color: "#DC2626", fontWeight: 700 }}>{percentString(m.change)}</Typography>
+                          <Typography variant="body2" sx={{ color: errorColor, fontWeight: 700 }}>{percentString(m.change)}</Typography>
                         </Box>
                       ))}
                     </Box>

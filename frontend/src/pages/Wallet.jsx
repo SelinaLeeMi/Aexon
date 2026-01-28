@@ -20,7 +20,9 @@ import {
   FormControl,
   useMediaQuery,
   Container,
+  useTheme,
 } from "@mui/material";
+import { cardSx } from "../shared/cardStyles";
 
 const depositAddresses = {
   BTC: {
@@ -52,6 +54,7 @@ const networksPerCoin = {
 };
 
 export default function Wallet() {
+  const theme = useTheme();
   const [wallet, setWallet] = useState([]);
   const [coins, setCoins] = useState([]);
   const [depositOpen, setDepositOpen] = useState(false);
@@ -98,24 +101,26 @@ export default function Wallet() {
   const handleDepositOpen = () => setDepositOpen(true);
   const handleDepositClose = () => setDepositOpen(false);
 
+  const successColor = theme.palette.success.main;
+
   return (
     <Container maxWidth="md" sx={{ px: { xs: 1, md: 2 }, pt: 2, pb: 10 }}>
       <Typography variant={isMobile ? "h5" : "h4"} fontWeight={700} mb={3}>
         Wallet
       </Typography>
 
-      <Paper sx={{ p: 2, mb: 2, borderRadius: 2 }}>
+      <Paper sx={cardSx(theme)} elevation={0}>
         <Typography variant="h6" fontWeight={600}>Total Balance</Typography>
-        <Typography variant="h4" fontWeight={700} color="#10B981" sx={{ mt: 1 }}>
+        <Typography variant="h4" fontWeight={700} color={successColor} sx={{ mt: 1 }}>
           ${totalUsdBalance.toLocaleString(undefined, { maximumFractionDigits: 8 })}
         </Typography>
         <Box sx={{ mt: 2, display: "flex", gap: 2, flexWrap: "wrap" }}>
-          <Button variant="contained" onClick={handleDepositOpen}>Deposit</Button>
+          <Button variant="contained" onClick={handleDepositOpen} color="primary">Deposit</Button>
           <Button variant="outlined">Withdraw</Button>
         </Box>
       </Paper>
 
-      <Paper sx={{ p: 2, borderRadius: 2 }}>
+      <Paper sx={{ ...cardSx(theme), mt: 2 }} elevation={0}>
         <Typography variant="h6" fontWeight={600} mb={2}>Assets</Typography>
         <Table size="small">
           <TableHead>
