@@ -15,18 +15,15 @@ import api from "../api";
 import { cardSx } from "../shared/cardStyles";
 
 /**
- * Dashboard - Visual refinement for a professional exchange UI
+ * Dashboard - Strict visual cleanup for institutional exchange UI
  *
- * Visual-only changes:
- * - Mobile-first, single-column layout
- * - Flat cards using shared cardSx (subtle border / soft shadow)
- * - Moderate border radius from theme (no pill shapes)
- * - Strong typography hierarchy:
- *    - Asset ticker = strongest
- *    - Price = secondary
- *    - % change = visually prominent (green/red only)
+ * Hard visual rules applied:
+ * - Removed all decorative backgrounds, gradients, glows, and playful styling.
+ * - Flat, rectangular cards with subtle borders/shadows using shared cardSx.
+ * - Consistent rectangular shapes and moderate border radius from theme.
+ * - Clear data hierarchy: ticker (strongest) > price (secondary) > % change (prominent green/red).
  *
- * NOTE: No data logic, API calls, routing, auth, or state were changed.
+ * IMPORTANT: No data logic, API calls, routing, auth, or state were changed.
  */
 
 function formatCurrency(value, currency = "USD") {
@@ -142,18 +139,16 @@ export default function Dashboard() {
     window.location.href = "/trade";
   };
 
-  // theme tokens for consistent visual language
   const muted = theme.palette.text.secondary;
   const divider = theme.palette.divider;
   const successColor = theme.palette.success.main;
   const errorColor = theme.palette.error.main;
-  const accent = theme.palette.primary.main;
 
   return (
     <Box sx={{ minHeight: "100vh", backgroundColor: theme.palette.background.default, color: theme.palette.text.primary, py: { xs: 2, md: 3 } }}>
       <Container maxWidth="lg" sx={{ width: "100%", maxWidth: 1200 }}>
         <Grid container spacing={2}>
-          {/* Portfolio summary card */}
+          {/* Portfolio card */}
           <Grid item xs={12}>
             <Paper elevation={0} sx={cardSx(theme)}>
               <Grid container alignItems="center" spacing={2}>
@@ -161,7 +156,6 @@ export default function Dashboard() {
                   <Typography variant="subtitle2" sx={{ color: muted, fontWeight: 700 }}>Portfolio Value</Typography>
 
                   <Box sx={{ display: "flex", alignItems: "baseline", gap: 2, mt: 0.5, flexWrap: "wrap" }}>
-                    {/* Main total */}
                     {loadingSummary ? (
                       <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                         <CircularProgress size={18} color="inherit" />
@@ -180,18 +174,14 @@ export default function Dashboard() {
                       </Typography>
                     )}
 
-                    {/* 24h percent change - prominent green/red only */}
                     {!loadingSummary && totals.percentChange != null ? (
                       <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                        <Typography
-                          variant="subtitle1"
-                          sx={{
-                            color: totals.percentChange >= 0 ? successColor : errorColor,
-                            fontWeight: 800,
-                            fontSize: "0.95rem",
-                            fontVariantNumeric: "tabular-nums",
-                          }}
-                        >
+                        <Typography variant="subtitle1" sx={{
+                          color: totals.percentChange >= 0 ? successColor : errorColor,
+                          fontWeight: 800,
+                          fontSize: "0.95rem",
+                          fontVariantNumeric: "tabular-nums",
+                        }}>
                           {totals.percentChange >= 0 ? "+" : ""}{totals.percentChange.toFixed(2)}%
                         </Typography>
                         <Typography variant="caption" sx={{ color: muted }}>24h</Typography>
@@ -232,37 +222,27 @@ export default function Dashboard() {
                   ) : (marketMovers.gainers && marketMovers.gainers.length > 0) ? (
                     <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
                       {marketMovers.gainers.map(m => (
-                        <Box
-                          key={m.symbol}
-                          sx={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            py: 1,
-                          }}
-                        >
+                        <Box key={m.symbol} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", py: 1 }}>
                           <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-                            {/* Ticker: strongest */}
+                            {/* Ticker - strongest */}
                             <Box>
                               <Typography sx={{ fontWeight: 800, fontSize: "0.98rem" }}>{m.symbol}</Typography>
-                              {/* Price: secondary */}
+                              {/* Price - secondary */}
                               <Typography variant="caption" sx={{ color: muted }}>
                                 {formatCurrency(m.price, "USD")}
                               </Typography>
                             </Box>
                           </Box>
 
-                          {/* % change: visually prominent green only */}
-                          <Typography
-                            sx={{
-                              color: successColor,
-                              fontWeight: 800,
-                              fontSize: "0.95rem",
-                              fontVariantNumeric: "tabular-nums",
-                              minWidth: 84,
-                              textAlign: "right",
-                            }}
-                          >
+                          {/* % change - prominent green */}
+                          <Typography sx={{
+                            color: successColor,
+                            fontWeight: 800,
+                            fontSize: "0.95rem",
+                            fontVariantNumeric: "tabular-nums",
+                            minWidth: 84,
+                            textAlign: "right",
+                          }}>
                             {percentString(m.change)}
                           </Typography>
                         </Box>
@@ -290,37 +270,27 @@ export default function Dashboard() {
                   ) : (marketMovers.losers && marketMovers.losers.length > 0) ? (
                     <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
                       {marketMovers.losers.map(m => (
-                        <Box
-                          key={m.symbol}
-                          sx={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            py: 1,
-                          }}
-                        >
+                        <Box key={m.symbol} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", py: 1 }}>
                           <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-                            {/* Ticker: strongest */}
+                            {/* Ticker - strongest */}
                             <Box>
                               <Typography sx={{ fontWeight: 800, fontSize: "0.98rem" }}>{m.symbol}</Typography>
-                              {/* Price: secondary */}
+                              {/* Price - secondary */}
                               <Typography variant="caption" sx={{ color: muted }}>
                                 {formatCurrency(m.price, "USD")}
                               </Typography>
                             </Box>
                           </Box>
 
-                          {/* % change: visually prominent red only */}
-                          <Typography
-                            sx={{
-                              color: errorColor,
-                              fontWeight: 800,
-                              fontSize: "0.95rem",
-                              fontVariantNumeric: "tabular-nums",
-                              minWidth: 84,
-                              textAlign: "right",
-                            }}
-                          >
+                          {/* % change - prominent red */}
+                          <Typography sx={{
+                            color: errorColor,
+                            fontWeight: 800,
+                            fontSize: "0.95rem",
+                            fontVariantNumeric: "tabular-nums",
+                            minWidth: 84,
+                            textAlign: "right",
+                          }}>
                             {percentString(m.change)}
                           </Typography>
                         </Box>
