@@ -1,6 +1,6 @@
 import React from "react";
 import {
-  Drawer, List, ListItem, ListItemIcon, ListItemText, Divider, Box, Typography, Avatar
+  Drawer, List, ListItem, ListItemIcon, ListItemText, Divider, Box, Typography
 } from "@mui/material";
 import PersonIcon from "@mui/icons-material/Person";
 import SettingsIcon from "@mui/icons-material/Settings";
@@ -8,6 +8,7 @@ import SupportAgentIcon from "@mui/icons-material/SupportAgent";
 import LogoutIcon from "@mui/icons-material/Logout";
 import HomeIcon from "@mui/icons-material/Home";
 import WalletIcon from "@mui/icons-material/AccountBalanceWallet";
+import AccountCircleIcon from "@mui/icons-material/AccountCircle";
 import { useNavigate } from "react-router-dom";
 
 const menu = [
@@ -26,9 +27,20 @@ export default function AppDrawer({ open, onClose, user }) {
     <Drawer anchor="left" open={open} onClose={onClose} aria-label="main navigation drawer">
       <Box sx={{ width: 260 }}>
         <Box sx={{ p: 2, display: "flex", alignItems: "center", gap: 2 }}>
-          <Avatar src={user?.avatar} sx={{ width: 48, height: 48 }}>
-            {user?.username?.[0]?.toUpperCase()}
-          </Avatar>
+          {/* Minimal neutral icon instead of circular avatar */}
+          <Box sx={{
+            width: 48,
+            height: 48,
+            borderRadius: 1,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: "transparent",
+            border: "1px solid rgba(255,255,255,0.06)",
+            color: "#fff"
+          }}>
+            <AccountCircleIcon sx={{ width: 36, height: 36 }} />
+          </Box>
           <Box>
             <Typography fontWeight={700}>{user?.username || "User"}</Typography>
             <Typography fontSize={13} color="text.secondary">{user?.email}</Typography>

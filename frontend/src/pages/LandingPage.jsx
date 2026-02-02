@@ -33,14 +33,14 @@ const CoinIcon = ({ src, alt }) => (
       width: 28,
       height: 28,
       marginRight: 10,
-      borderRadius: "50%",
+      borderRadius: 6, // slightly rounded squares (was 50%)
       background: "#222", // fallback background if image missing
       objectFit: "contain",
       display: "block"
     }}
     onError={e => {
       e.target.onerror = null;
-      e.target.src = "/assets/coins/default.png"; // fallback icon (add this to assets)
+      e.target.src = "/assets/coins/default.png"; // fallback icon (ensure exists)
     }}
   />
 );
@@ -54,8 +54,7 @@ export default function LandingPage() {
         minHeight: "100vh",
         width: "100vw",
         bgcolor: "#111418",
-        background: "linear-gradient(120deg, #101217 0%, #1d2231 100%)",
-        display: "flex",
+        background: "#0B0F14",
         flexDirection: "column",
         alignItems: "center",
         m: 0,
@@ -117,9 +116,8 @@ export default function LandingPage() {
           style={{
             width: 64,
             height: 64,
-            borderRadius: 16,
+            borderRadius: 8, // smaller, professional radius
             marginBottom: 8,
-            boxShadow: "0 2px 12px #0006",
             objectFit: "contain",
             background: "#181d28"
           }}
@@ -140,11 +138,11 @@ export default function LandingPage() {
           width: "100%",
           maxWidth: 420,
           mx: "auto",
-          boxShadow: "0 4px 32px #0003",
           my: 2,
           p: 2.5,
-          borderRadius: 3,
-          border: "none",
+          borderRadius: 2,
+          border: "1px solid #232c3c",
+          boxShadow: "0 1px 6px rgba(0,0,0,0.06)",
         }}
         elevation={0}
       >
@@ -196,11 +194,11 @@ export default function LandingPage() {
           width: "100%",
           maxWidth: 420,
           mx: "auto",
-          boxShadow: "0 4px 32px #0003",
           my: 2,
           p: 2.5,
-          borderRadius: 3,
-          border: "none",
+          borderRadius: 2,
+          border: "1px solid #232c3c",
+          boxShadow: "0 1px 6px rgba(0,0,0,0.06)",
         }}
         elevation={0}
       >
@@ -251,11 +249,11 @@ export default function LandingPage() {
           width: "100%",
           maxWidth: 420,
           mx: "auto",
-          boxShadow: "0 4px 32px #0003",
           my: 2,
           p: 2.5,
-          borderRadius: 3,
-          border: "none",
+          borderRadius: 2,
+          border: "1px solid #232c3c",
+          boxShadow: "0 1px 6px rgba(0,0,0,0.06)",
         }}
         elevation={0}
       >

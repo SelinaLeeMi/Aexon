@@ -19,17 +19,14 @@ import AccountCircleIcon from "@mui/icons-material/AccountCircle";
 import { useNavigate } from "react-router-dom";
 
 /**
- * TopHeader (visual-only refinement)
+ * TopHeader (visual refinement)
  *
- * Visual rules applied:
- * - Removed gradients / decorative badges.
- * - Replaced AX avatar badge with a neutral, minimal square mark (no gradient, no badge).
- * - Search input: Enter key or search icon click navigates:
- *     - if input has text -> /search?q=<query>
- *     - if input empty -> /markets
+ * - Search navigates to /market (existing route) with query param when provided:
+ *     /market?q=<query>
+ * - Minimal header mark, no gradient decorations
+ * - Input radius aligned with theme.shape.borderRadius
  *
- * NOTE: No logic, routing, API, auth, or state behavior other than *navigation target for search* was modified.
- * The search behavior is strictly navigation-only and respects existing routing.
+ * No behavior changes beyond search target adjustment.
  */
 
 export default function TopHeader({ onToggleSidebar, onTrade, onWallet }) {
@@ -49,12 +46,12 @@ export default function TopHeader({ onToggleSidebar, onTrade, onWallet }) {
   const performSearch = () => {
     const q = (search || "").trim();
     if (!q) {
-      // Empty search takes the user to the markets overview
-      navigate("/markets");
+      // Navigate to existing market overview when search empty
+      navigate("/market");
       return;
     }
-    // Non-empty search goes to the search page with query param
-    navigate(`/search?q=${encodeURIComponent(q)}`);
+    // Navigate to existing market route with query param
+    navigate(`/market?q=${encodeURIComponent(q)}`);
   };
 
   const openProfileMenu = (evt) => {
@@ -94,7 +91,7 @@ export default function TopHeader({ onToggleSidebar, onTrade, onWallet }) {
             <MenuIcon />
           </IconButton>
 
-          {/* Neutral minimal mark — no gradient, no decorative badge */}
+          {/* Neutral minimal mark — no decorative gradient or badge */}
           <Box
             onClick={() => navigate("/")}
             sx={{
@@ -133,7 +130,7 @@ export default function TopHeader({ onToggleSidebar, onTrade, onWallet }) {
           </Box>
         </Box>
 
-        {/* Search - must navigate on Enter or search icon click */}
+        {/* Search - navigates to /market with optional q param */}
         <Box sx={{ flex: 1, mx: 2, display: "flex", justifyContent: "center" }}>
           <TextField
             value={search}
@@ -143,13 +140,15 @@ export default function TopHeader({ onToggleSidebar, onTrade, onWallet }) {
             size="small"
             variant="outlined"
             aria-label="Global search"
+            fullWidth={false}
             sx={{
               width: { xs: "100%", sm: 560 },
               backgroundColor: theme.palette.background.paper,
-              borderRadius: 1,
+              borderRadius: `${theme.shape.borderRadius}px`,
               "& .MuiOutlinedInput-notchedOutline": { border: `1px solid ${theme.palette.divider}` },
             }}
             InputProps={{
+              sx: { borderRadius: `${theme.shape.borderRadius}px` },
               endAdornment: (
                 <InputAdornment position="end">
                   <IconButton
@@ -167,14 +166,13 @@ export default function TopHeader({ onToggleSidebar, onTrade, onWallet }) {
         </Box>
 
         <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
-          {/* Keep Trade button visually minimal and themed */}
           {!isMobile && (
             <Button color="inherit" onClick={onTrade}>
               Trade
             </Button>
           )}
 
-          {/* Minimal profile icon (no initials badge) */}
+          {/* Minimal profile icon (no initials/badge) */}
           <IconButton
             color="inherit"
             onClick={openProfileMenu}
