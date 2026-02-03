@@ -12,7 +12,6 @@ import {
   MenuItem,
   useTheme,
   useMediaQuery,
-  SvgIcon,
 } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
 import SearchIcon from "@mui/icons-material/Search";
@@ -20,15 +19,13 @@ import AccountCircleIcon from "@mui/icons-material/AccountCircle";
 import { useNavigate } from "react-router-dom";
 
 /**
- * TopHeader (minimal, professional)
+ * TopHeader
  *
- * Visual-only change: replaced the hard-coded "AX" text mark with a neutral,
- * minimal square glyph rendered via SvgIcon. No gradients, no initials badges.
+ * Visual-only: removed the square logo placeholder box as requested.
  *
  * Behavior:
- * - Search still navigates to /market (existing route) with query param when provided:
+ * - Search navigates to /market (existing route) with query param when provided:
  *     /market?q=<query>
- * - Input radius aligned with theme.shape.borderRadius (unchanged).
  *
  * No logic, routing, API, auth, or state behavior was changed.
  */
@@ -95,7 +92,7 @@ export default function TopHeader({ onToggleSidebar, onTrade, onWallet }) {
             <MenuIcon />
           </IconButton>
 
-          {/* Minimal neutral mark — replaced hard-coded 'AX' with a simple glyph */}
+          {/* Brand area: logo placeholder removed; keep wordmark for spacing */}
           <Box
             onClick={() => navigate("/")}
             sx={{
@@ -106,28 +103,6 @@ export default function TopHeader({ onToggleSidebar, onTrade, onWallet }) {
             }}
             aria-label="home"
           >
-            <Box
-              sx={{
-                width: 36,
-                height: 36,
-                borderRadius: 1.5,
-                backgroundColor: theme.palette.background.paper,
-                border: `1px solid ${theme.palette.divider}`,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-              aria-hidden
-            >
-              {/* Neutral square glyph — purely presentational */}
-              <SvgIcon
-                viewBox="0 0 24 24"
-                sx={{ fontSize: 18, color: theme.palette.text.primary }}
-              >
-                <rect x="6" y="6" width="12" height="12" rx="2" ry="2" />
-              </SvgIcon>
-            </Box>
-
             <Typography
               variant="h6"
               sx={{ fontWeight: 700, display: { xs: "none", sm: "block" } }}
