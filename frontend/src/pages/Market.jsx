@@ -1,14 +1,19 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Box, Typography, Paper, InputBase, Chip, Tabs, Tab, Button, Stack, Grid, CircularProgress, Divider
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import { getCoins } from "../api";
 import useMediaQuery from "@mui/material/useMediaQuery";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 export default function Market() {
-  const [search, setSearch] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const qParam = (searchParams.get("q") || "").trim();
+
+  // Local input state (controlled input) — synced from URL qParam; URL is the source of truth
+  const [search, setSearch] = useState(qParam);
+
   const [tab, setTab] = useState(0);
   const [coins, setCoins] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -30,11 +35,34 @@ export default function Market() {
       .finally(() => setLoading(false));
   }, []);
 
+  // Keep local input synchronized with qParam (URL is canonical)
+  useEffect(() => {
+    if (qParam !== search) {
+      setSearch(qParam);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qParam]);
+
+  // When user types in the Market page input, update the URL q param (replace history)
+  const onChangeSearch = (e) => {
+    const v = e.target.value;
+    setSearch(v);
+
+    const next = new URLSearchParams(searchParams);
+    if (v && v.trim() !== "") {
+      next.set("q", v);
+    } else {
+      next.delete("q");
+    }
+    // replace to avoid polluting history on each keystroke
+    setSearchParams(next, { replace: true });
+  };
+
   const filteredCoins = Array.isArray(coins)
     ? coins.filter(
         c =>
-          c.symbol?.toLowerCase().includes(search.toLowerCase()) ||
-          c.name?.toLowerCase().includes(search.toLowerCase())
+          c.symbol?.toLowerCase().includes((qParam || "").toLowerCase()) ||
+          c.name?.toLowerCase().includes((qParam || "").toLowerCase())
       )
     : [];
 
@@ -61,7 +89,7 @@ export default function Market() {
         <InputBase
           placeholder="Search Coin Pairs"
           value={search}
-          onChange={e => setSearch(e.target.value)}
+          onChange={onChangeSearch}
           sx={{ flex: 1, fontWeight: 500 }}
         />
       </Paper>

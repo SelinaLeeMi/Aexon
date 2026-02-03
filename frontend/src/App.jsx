@@ -25,7 +25,7 @@ import Landing from "./pages/LandingPage";
 import Dashboard from "./pages/Dashboard";
 import BottomNav from "./components/BottomNav";
 import TopHeader from "./components/TopHeader";
-import { Box, Drawer, List, ListItem, ListItemIcon, ListItemText, IconButton, Avatar, Divider, Typography, GlobalStyles } from "@mui/material";
+import { Box, Drawer, List, ListItem, ListItemIcon, ListItemText, IconButton, Divider, Typography, GlobalStyles } from "@mui/material";
 import HomeIcon from "@mui/icons-material/Home";
 import ShowChartIcon from "@mui/icons-material/ShowChart";
 import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
@@ -41,7 +41,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import AdminRoute from "./pages/AdminRoute";
 import { RealtimeProvider } from "./context/RealtimeContext";
 
-// --- Hardcoded Dark Theme ---
+// --- Hardcoded Dark Theme (visual adjustments: softer radius and subtle shadow) ---
 const DARK_BG = "#111418";
 const DARK_PAPER = "#181d28";
 const DARK_DIVIDER = "#232c3c";
@@ -71,14 +71,17 @@ const theme = createTheme({
     h4: { fontWeight: 700 },
     h5: { fontWeight: 600 }
   },
-  shape: { borderRadius: 16 },
+  // Use a moderate border radius (8) to avoid pill shapes
+  shape: { borderRadius: 8 },
   components: {
     MuiPaper: {
       styleOverrides: {
         root: {
           backgroundColor: DARK_PAPER,
-          boxShadow: "0 4px 32px #0003",
-          border: "none !important",
+          // Subtle, professional elevation
+          boxShadow: "0 1px 6px rgba(0,0,0,0.06)",
+          // Use a subtle border instead of heavy shadow to achieve flat, institutional look
+          border: `1px solid ${DARK_DIVIDER}`,
         }
       }
     },
@@ -111,8 +114,8 @@ const theme = createTheme({
       styleOverrides: {
         paper: {
           backgroundColor: DARK_PAPER,
-          border: "none !important",
-          boxShadow: "0 8px 32px #000a"
+          border: `1px solid ${DARK_DIVIDER}`,
+          boxShadow: "0 8px 24px rgba(0,0,0,0.25)"
         }
       }
     },
@@ -127,7 +130,8 @@ const theme = createTheme({
       styleOverrides: {
         root: {
           backgroundColor: "transparent",
-          borderRadius: 12,
+          // Match global moderate radius
+          borderRadius: 8,
           "& fieldset": {
             borderColor: DARK_DIVIDER,
           },
@@ -177,9 +181,24 @@ function AppDrawer({ open, onClose, user }) {
             position: "relative",
           }}
         >
-          <Avatar src={user?.avatar} sx={{ width: 48, height: 48 }}>
-            {user?.username?.[0]?.toUpperCase() || "U"}
-          </Avatar>
+          {/* Keep avatar minimal — visual-only: do not show heavy styling */}
+          <Box
+            sx={{
+              width: 48,
+              height: 48,
+              borderRadius: 1,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: DARK_PAPER,
+              border: `1px solid ${DARK_DIVIDER}`,
+              color: "#fff"
+            }}
+          >
+            {/* Minimal icon instead of decorative avatar */}
+            <PersonIcon />
+          </Box>
+
           <Box>
             <Typography fontWeight={600} sx={{ color: "#fff" }}>
               {user?.username || "User"}
@@ -259,34 +278,34 @@ function AppContent() {
   }
 
   // Header height compensation (prevent page content from being obscured)
-  // Keep this minimal: use the header's minHeight (56px) + small gap on desktop.
   const headerHeight = hideGlobalNav ? 0 : 64; // px
 
   return (
     <Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
       <GlobalStyles styles={{
         "html, body, #root": {
-          backgroundColor: "#111418 !important",
-          minHeight: "100vh !important",
-          minWidth: "100vw !important",
-          margin: "0 !important",
-          padding: "0 !important",
-          boxSizing: "border-box !important",
+          backgroundColor: DARK_BG,
+          minHeight: "100vh",
+          minWidth: "100vw",
+          margin: 0,
+          padding: 0,
+          boxSizing: "border-box",
         },
         body: {
-          backgroundColor: "#111418 !important",
+          backgroundColor: DARK_BG,
         },
+        // Use subtle Paper styling app-wide (no heavy glows)
         '.MuiPaper-root': {
-          backgroundColor: "#181d28 !important",
-          border: "none !important",
-          boxShadow: "0 4px 32px #0003 !important",
+          backgroundColor: DARK_PAPER,
+          border: `1px solid ${DARK_DIVIDER}`,
+          boxShadow: "0 1px 6px rgba(0,0,0,0.06)",
         },
         '.MuiTable-root': {
-          backgroundColor: "transparent !important",
+          backgroundColor: "transparent",
         },
         '.MuiDrawer-paper': {
-          backgroundColor: "#181d28 !important",
-          color: "#fff !important",
+          backgroundColor: DARK_PAPER,
+          color: "#fff",
         },
       }} />
 
