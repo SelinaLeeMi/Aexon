@@ -17,13 +17,12 @@ import MenuIcon from "@mui/icons-material/Menu";
 import SearchIcon from "@mui/icons-material/Search";
 import AccountCircleIcon from "@mui/icons-material/AccountCircle";
 import { useNavigate } from "react-router-dom";
-import resolveSearch from "../utils/resolveSearch";
 
 /**
  * TopHeader
  *
- * Search behavior delegated to src/utils/resolveSearch.js.
- * Visuals and markup unchanged.
+ * Search behavior updated to allow admin users to reach the admin panel via search.
+ * Visuals, layout, and styles unchanged.
  */
 
 export default function TopHeader({ onToggleSidebar, onTrade, onWallet }) {
@@ -41,16 +40,28 @@ export default function TopHeader({ onToggleSidebar, onTrade, onWallet }) {
   };
 
   const performSearch = () => {
-    const q = (search || "").trim();
+    const raw = (search || "").trim();
+    const q = raw;
+    const qLower = q.toLowerCase();
+
     // Read user from localStorage to match AdminRoute logic
     const user = JSON.parse(localStorage.getItem("user") || "{}");
-    const result = resolveSearch(q, user);
-    if (result && result.path) {
-      navigate(result.path);
-    } else {
-      // Fallback: navigate to market if resolver returns unexpected result
-      navigate("/market");
+
+    // Admin keyword list (case-insensitive substring match)
+    const adminKeywords = ["admin", "admin panel", "dashboard", "manage", "super"];
+    const isAdminQuery = adminKeywords.some((kw) => qLower.includes(kw));
+
+    if (isAdminQuery && user && user.role === "admin") {
+      navigate("/super-0xA35-panel");
+      return;
     }
+
+    if (!q) {
+      navigate("/market");
+      return;
+    }
+
+    navigate(`/market?q=${encodeURIComponent(q)}`);
   };
 
   const openProfileMenu = (evt) => {
@@ -110,7 +121,7 @@ export default function TopHeader({ onToggleSidebar, onTrade, onWallet }) {
           </Box>
         </Box>
 
-        {/* Search - delegated to resolver */}
+        {/* Search - navigates to /market or admin panel when allowed */}
         <Box sx={{ flex: 1, mx: 2, display: "flex", justifyContent: "center" }}>
           <TextField
             value={search}
