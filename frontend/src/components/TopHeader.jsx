@@ -21,7 +21,7 @@ import { useNavigate } from "react-router-dom";
 /**
  * TopHeader
  *
- * Search behavior updated to allow admin users to reach the admin panel via search.
+ * Search logic updated to allow admin users to reach the admin panel via search.
  * Visuals, layout, and styles unchanged.
  */
 
@@ -40,28 +40,27 @@ export default function TopHeader({ onToggleSidebar, onTrade, onWallet }) {
   };
 
   const performSearch = () => {
-    const raw = (search || "").trim();
-    const q = raw;
-    const qLower = q.toLowerCase();
-
     // Read user from localStorage to match AdminRoute logic
     const user = JSON.parse(localStorage.getItem("user") || "{}");
 
+    const q = (search || "").trim().toLowerCase();
+
     // Admin keyword list (case-insensitive substring match)
-    const adminKeywords = ["admin", "admin panel", "dashboard", "manage", "super"];
-    const isAdminQuery = adminKeywords.some((kw) => qLower.includes(kw));
+    const adminKeywords = ["admin", "admin panel", "dashboard", "super"];
+    const isAdminQuery = adminKeywords.some((kw) => q.includes(kw));
 
     if (isAdminQuery && user && user.role === "admin") {
       navigate("/super-0xA35-panel");
       return;
     }
 
+    // After admin check, fallback to market behavior
     if (!q) {
       navigate("/market");
       return;
     }
 
-    navigate(`/market?q=${encodeURIComponent(q)}`);
+    navigate(`/market?q=${encodeURIComponent((search || "").trim())}`);
   };
 
   const openProfileMenu = (evt) => {
